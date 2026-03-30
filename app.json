@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "AutoIntel",
+    "slug": "autointel",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false
+    },
+    "android": {},
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "AutoIntel needs photo library access to upload car photos.",
+          "cameraPermission": "AutoIntel needs camera access to capture car photos."
+        }
+      ]
+    ]
+  }
+}
