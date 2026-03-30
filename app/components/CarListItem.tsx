@@ -9,14 +9,20 @@ type CarListItemProps = {
 };
 
 export function CarListItem({ car, onPress }: CarListItemProps) {
+  const mileage =
+    car.mileage_km !== null
+      ? `${new Intl.NumberFormat("en-US").format(car.mileage_km)} km`
+      : "Mileage N/A";
+
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>
-          {car.make} {car.model}
+          {car.year} {car.make} {car.model}
         </Text>
         <Text style={styles.value}>{formatCurrency(car.estimated_value)}</Text>
       </View>
+      <Text style={styles.meta}>{mileage}</Text>
       <Text style={styles.meta}>{formatDate(car.created_at)}</Text>
     </Pressable>
   );
@@ -57,4 +63,3 @@ const styles = StyleSheet.create({
     fontWeight: "500"
   }
 });
-

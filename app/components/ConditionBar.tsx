@@ -19,12 +19,13 @@ function clamp01(value: number | string | null | undefined) {
 export function ConditionBar({ label, value, inverse = false }: ConditionBarProps) {
   const normalized = clamp01(value);
   const visualValue = inverse ? 1 - normalized : normalized;
+  const displayedValue = visualValue;
 
   return (
     <View style={styles.container}>
       <View style={styles.row}>
         <Text style={styles.label}>{label}</Text>
-        <Text style={styles.value}>{formatPercent(normalized)}</Text>
+        <Text style={styles.value}>{formatPercent(displayedValue)}</Text>
       </View>
       <View style={styles.track}>
         <View style={[styles.fill, { width: `${Math.round(visualValue * 100)}%` }]} />

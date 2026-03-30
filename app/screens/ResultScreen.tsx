@@ -7,15 +7,37 @@ import type { RootStackParamList } from "../types";
 import { formatCurrency, formatPercent } from "../utils/format";
 
 type ResultScreenProps = NativeStackScreenProps<RootStackParamList, "Result">;
+const USD_TO_CAD_RATE = 1.36;
+
+function toCadAmount(price: number, currency: string | undefined) {
+  if (String(currency ?? "").toUpperCase() === "USD") {
+    return Math.round(price * USD_TO_CAD_RATE);
+  }
+  return Math.round(price);
+}
 
 export function ResultScreen({ navigation, route }: ResultScreenProps) {
   const { car } = route.params;
-  const details = car.analysis[0];
+  const analysisItems = Array.isArray(car.analysis)
+    ? car.analysis
+    : car.analysis && typeof car.analysis === "object"
+      ? [car.analysis]
+      : [];
+  const details = analysisItems[0];
   const confidence = Number(car.confidence ?? 0);
   const exteriorScore = Number(details?.exterior_score ?? 0);
   const interiorScore = Number(details?.interior_score ?? 0);
   const tireScore = Number(details?.tire_score ?? 0);
   const damageScore = Number(details?.damage_score ?? 0);
+  const mileageLabel =
+    car.mileage_km !== null && Number.isFinite(Number(car.mileage_km))
+      ? `${new Intl.NumberFormat("en-US").format(Number(car.mileage_km))} km`
+      : "N/A";
+  const mods = details?.detected_mods ?? [];
+  const listings = details?.market_listings ?? [];
+  const conditionFactor = Number(details?.condition_adjustment_factor ?? 1);
+  const mileageFactor = Number(details?.mileage_adjustment_factor ?? 1);
+  const modsFactor = Number(details?.mods_adjustment_factor ?? 1);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -26,20 +48,64 @@ export function ResultScreen({ navigation, route }: ResultScreenProps) {
           <Text style={styles.carName}>
             {car.year} {car.make} {car.model}
           </Text>
+          <Text style={styles.meta}>Mileage: {mileageLabel}</Text>
           <Text style={styles.price}>{formatCurrency(car.estimated_value)}</Text>
+          <Text style={styles.meta}>All monetary values shown in CAD</Text>
           <Text style={styles.confidence}>Confidence: {formatPercent(confidence)}</Text>
         </View>
 
         {details ? (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Condition Breakdown</Text>
+            <Text style={styles.summary}>Higher % means better condition on every bar.</Text>
             <ConditionBar label="Exterior" value={exteriorScore} />
             <ConditionBar label="Interior" value={interiorScore} />
             <ConditionBar label="Tires" value={tireScore} />
-            <ConditionBar label="Damage" value={damageScore} inverse />
+            <ConditionBar label="Damage-Free" value={damageScore} inverse />
 
             <Text style={styles.sectionTitle}>Summary</Text>
             <Text style={styles.summary}>{details.summary}</Text>
+
+            {details.base_market_value ? (
+              <>
+                <Text style={styles.sectionTitle}>Market Value Inputs</Text>
+                <Text style={styles.summary}>
+                  Base market value from comps: {formatCurrency(details.base_market_value)}
+                </Text>
+                <Text style={styles.summary}>
+                  Condition factor: x{conditionFactor.toFixed(2)}
+                </Text>
+                <Text style={styles.summary}>
+                  Mileage factor: x{mileageFactor.toFixed(2)}
+                </Text>
+                <Text style={styles.summary}>
+                  Mods factor: x{modsFactor.toFixed(2)}
+                </Text>
+              </>
+            ) : null}
+
+            {mods.length > 0 ? (
+              <>
+                <Text style={styles.sectionTitle}>Detected Mods</Text>
+                {mods.map((mod, index) => (
+                  <Text key={`${mod.name}-${index}`} style={styles.summary}>
+                    {mod.name}: {mod.impactPercent >= 0 ? "+" : ""}
+                    {mod.impactPercent}% {mod.notes ? `(${mod.notes})` : ""}
+                  </Text>
+                ))}
+              </>
+            ) : null}
+
+            {listings.length > 0 ? (
+              <>
+                <Text style={styles.sectionTitle}>Market Comps</Text>
+                {listings.slice(0, 4).map((listing, index) => (
+                  <Text key={`${listing.title}-${index}`} style={styles.summary}>
+                    {listing.source}: {listing.title} - {formatCurrency(toCadAmount(listing.price, listing.currency))}
+                  </Text>
+                ))}
+              </>
+            ) : null}
           </View>
         ) : (
           <View style={styles.card}>
@@ -88,6 +154,11 @@ const styles = StyleSheet.create({
     color: "#0B5D1E"
   },
   confidence: {
+    fontSize: 14,
+    color: "#35516D",
+    fontWeight: "600"
+  },
+  meta: {
     fontSize: 14,
     color: "#35516D",
     fontWeight: "600"

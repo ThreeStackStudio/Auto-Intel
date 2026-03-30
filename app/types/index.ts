@@ -16,13 +16,52 @@ export type ConditionScores = {
   damage: number;
 };
 
+export type PhotoView =
+  | "front"
+  | "driver_side"
+  | "passenger_side"
+  | "rear"
+  | "interior"
+  | "tire_tread";
+
+export type DetectedModification = {
+  name: string;
+  impactPercent: number;
+  confidence: number;
+  notes: string;
+};
+
+export type MarketListing = {
+  source: string;
+  title: string;
+  price: number;
+  currency: string;
+  url: string;
+};
+
+export type MarketValuation = {
+  baseMarketValue: number;
+  conditionAdjustmentFactor: number;
+  mileageAdjustmentFactor: number;
+  modsAdjustmentFactor: number;
+  estimatedValue: number;
+  lowValue: number;
+  highValue: number;
+  listingCount: number;
+  method: string;
+};
+
 export type AnalysisResult = {
   make: string;
   model: string;
   year: number;
+  mileageKm: number;
   condition: ConditionScores;
   confidence: number;
   summary: string;
+  detectedMods: DetectedModification[];
+  marketListings: MarketListing[];
+  marketValuation: MarketValuation | null;
 };
 
 export type ProfileRow = {
@@ -39,6 +78,7 @@ export type CarRow = {
   make: string;
   model: string;
   year: number;
+  mileage_km: number | null;
   estimated_value: number;
   confidence: number;
   created_at: string;
@@ -60,6 +100,12 @@ export type AnalysisRow = {
   tire_score: number;
   damage_score: number;
   summary: string;
+  detected_mods: DetectedModification[];
+  market_listings: MarketListing[];
+  base_market_value: number | null;
+  condition_adjustment_factor: number | null;
+  mileage_adjustment_factor: number | null;
+  mods_adjustment_factor: number | null;
   created_at: string;
 };
 
@@ -67,4 +113,3 @@ export type CarWithRelations = CarRow & {
   images: ImageRow[];
   analysis: AnalysisRow[];
 };
-

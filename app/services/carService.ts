@@ -1,7 +1,15 @@
 import type { AnalysisResult, CarWithRelations } from "../types";
 import { supabase } from "./supabase";
 
-const DEFAULT_ANGLES = ["front", "rear", "left-side", "right-side", "interior"];
+function normalizeRelationArray<T>(value: unknown): T[] {
+  if (Array.isArray(value)) {
+    return value as T[];
+  }
+  if (value && typeof value === "object") {
+    return [value as T];
+  }
+  return [];
+}
 
 export async function fetchUserCars(): Promise<CarWithRelations[]> {
   const { data, error } = await supabase
@@ -13,6 +21,7 @@ export async function fetchUserCars(): Promise<CarWithRelations[]> {
       make,
       model,
       year,
+      mileage_km,
       estimated_value,
       confidence,
       created_at,
@@ -31,6 +40,12 @@ export async function fetchUserCars(): Promise<CarWithRelations[]> {
         tire_score,
         damage_score,
         summary,
+        detected_mods,
+        market_listings,
+        base_market_value,
+        condition_adjustment_factor,
+        mileage_adjustment_factor,
+        mods_adjustment_factor,
         created_at
       )
       `
@@ -41,18 +56,27 @@ export async function fetchUserCars(): Promise<CarWithRelations[]> {
     throw new Error(`Failed to load car history: ${error.message}`);
   }
 
-  return (data ?? []) as CarWithRelations[];
+  return (data ?? []).map((row) => {
+    const car = row as Record<string, unknown>;
+    return {
+      ...(car as CarWithRelations),
+      images: normalizeRelationArray(car.images),
+      analysis: normalizeRelationArray(car.analysis)
+    };
+  });
 }
 
 type SaveCarAnalysisArgs = {
   userId: string;
+  mileageKm: number;
   imageUrls: string[];
+  photoAngles: string[];
   analysisResult: AnalysisResult;
   estimatedValue: number;
 };
 
 export async function saveCarAnalysis(args: SaveCarAnalysisArgs): Promise<CarWithRelations> {
-  const { userId, imageUrls, analysisResult, estimatedValue } = args;
+  const { userId, mileageKm, imageUrls, photoAngles, analysisResult, estimatedValue } = args;
   let createdCarId: string | null = null;
 
   try {
@@ -63,6 +87,7 @@ export async function saveCarAnalysis(args: SaveCarAnalysisArgs): Promise<CarWit
         make: analysisResult.make,
         model: analysisResult.model,
         year: Number.isFinite(analysisResult.year) ? analysisResult.year : new Date().getFullYear(),
+        mileage_km: Number.isFinite(mileageKm) ? Math.max(0, Math.round(mileageKm)) : null,
         estimated_value: estimatedValue,
         confidence: analysisResult.confidence
       })
@@ -73,6 +98,7 @@ export async function saveCarAnalysis(args: SaveCarAnalysisArgs): Promise<CarWit
         make,
         model,
         year,
+        mileage_km,
         estimated_value,
         confidence,
         created_at
@@ -89,7 +115,7 @@ export async function saveCarAnalysis(args: SaveCarAnalysisArgs): Promise<CarWit
     const imageRows = imageUrls.map((imageUrl, index) => ({
       car_id: createdCarId,
       image_url: imageUrl,
-      angle: DEFAULT_ANGLES[index] ?? `angle-${index + 1}`
+      angle: photoAngles[index] ?? `angle-${index + 1}`
     }));
 
     const { data: images, error: imagesError } = await supabase
@@ -117,7 +143,13 @@ export async function saveCarAnalysis(args: SaveCarAnalysisArgs): Promise<CarWit
         interior_score: analysisResult.condition.interior,
         tire_score: analysisResult.condition.tires,
         damage_score: analysisResult.condition.damage,
-        summary: analysisResult.summary
+        summary: analysisResult.summary,
+        detected_mods: analysisResult.detectedMods,
+        market_listings: analysisResult.marketListings,
+        base_market_value: analysisResult.marketValuation?.baseMarketValue ?? null,
+        condition_adjustment_factor: analysisResult.marketValuation?.conditionAdjustmentFactor ?? null,
+        mileage_adjustment_factor: analysisResult.marketValuation?.mileageAdjustmentFactor ?? null,
+        mods_adjustment_factor: analysisResult.marketValuation?.modsAdjustmentFactor ?? null
       })
       .select(
         `
@@ -128,6 +160,12 @@ export async function saveCarAnalysis(args: SaveCarAnalysisArgs): Promise<CarWit
         tire_score,
         damage_score,
         summary,
+        detected_mods,
+        market_listings,
+        base_market_value,
+        condition_adjustment_factor,
+        mileage_adjustment_factor,
+        mods_adjustment_factor,
         created_at
         `
       )
@@ -149,4 +187,3 @@ export async function saveCarAnalysis(args: SaveCarAnalysisArgs): Promise<CarWit
     throw error;
   }
 }
-

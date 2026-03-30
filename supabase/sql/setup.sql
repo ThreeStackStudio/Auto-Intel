@@ -14,6 +14,7 @@ create table if not exists public.cars (
   make text not null,
   model text not null,
   year integer not null,
+  mileage_km integer check (mileage_km is null or mileage_km >= 0),
   estimated_value double precision not null,
   confidence double precision not null check (confidence >= 0 and confidence <= 1),
   created_at timestamptz not null default now()
@@ -35,8 +36,35 @@ create table if not exists public.analysis (
   tire_score double precision not null check (tire_score >= 0 and tire_score <= 1),
   damage_score double precision not null check (damage_score >= 0 and damage_score <= 1),
   summary text not null,
+  detected_mods jsonb not null default '[]'::jsonb,
+  market_listings jsonb not null default '[]'::jsonb,
+  base_market_value double precision,
+  condition_adjustment_factor double precision,
+  mileage_adjustment_factor double precision,
+  mods_adjustment_factor double precision,
   created_at timestamptz not null default now()
 );
+
+alter table public.cars
+  add column if not exists mileage_km integer check (mileage_km is null or mileage_km >= 0);
+
+alter table public.analysis
+  add column if not exists detected_mods jsonb not null default '[]'::jsonb;
+
+alter table public.analysis
+  add column if not exists market_listings jsonb not null default '[]'::jsonb;
+
+alter table public.analysis
+  add column if not exists base_market_value double precision;
+
+alter table public.analysis
+  add column if not exists condition_adjustment_factor double precision;
+
+alter table public.analysis
+  add column if not exists mileage_adjustment_factor double precision;
+
+alter table public.analysis
+  add column if not exists mods_adjustment_factor double precision;
 
 create index if not exists idx_cars_user_id on public.cars (user_id);
 create index if not exists idx_images_car_id on public.images (car_id);

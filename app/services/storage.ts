@@ -33,11 +33,12 @@ async function readImageFileAsJpeg(uri: string) {
 export async function uploadCarImage(
   uri: string,
   userId: string,
-  index: number
+  fileHint: string
 ): Promise<UploadedImage> {
   try {
     const { fileBuffer, contentType, extension } = await readImageFileAsJpeg(uri);
-    const fileName = `${Date.now()}-${index}.${extension}`;
+    const safeHint = fileHint.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 40) || "photo";
+    const fileName = `${Date.now()}-${safeHint}.${extension}`;
     const path = `${userId}/${fileName}`;
 
     const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, fileBuffer, {
@@ -65,10 +66,15 @@ export async function uploadCarImage(
 
     const analysisUrl = signedData?.signedUrl ?? data.publicUrl;
 
-    logInfo("Storage", "Image converted and uploaded.", { index, path, contentType, extension });
+    logInfo("Storage", "Image converted and uploaded.", {
+      fileHint: safeHint,
+      path,
+      contentType,
+      extension
+    });
     return { path, publicUrl: data.publicUrl, analysisUrl };
   } catch (error) {
-    logError("Storage", error, { index, userId });
+    logError("Storage", error, { fileHint, userId });
     throw error;
   }
 }

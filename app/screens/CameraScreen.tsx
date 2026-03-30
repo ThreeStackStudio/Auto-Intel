@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
@@ -15,52 +14,171 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { LoadingOverlay } from "../components/LoadingOverlay";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { TextField } from "../components/TextField";
-import { analyzeCarImages } from "../services/api";
+import { analyzeCarImages, verifyCarPhoto } from "../services/api";
 import { saveCarAnalysis } from "../services/carService";
 import { supabase } from "../services/supabase";
 import { uploadCarImage } from "../services/storage";
-import type { RootStackParamList } from "../types";
+import type { PhotoView, RootStackParamList } from "../types";
 import { logError, logInfo, logWarn } from "../utils/logger";
 import { calculateEstimatedValue, estimateBasePrice } from "../utils/valuation";
 
 type CameraScreenProps = NativeStackScreenProps<RootStackParamList, "Camera">;
 
-const MIN_IMAGES = 3;
-const MAX_IMAGES = 5;
+type CaptureStep = {
+  id: PhotoView;
+  label: string;
+  verificationHint: string;
+};
+
+type CapturedShot = {
+  localUri: string;
+  publicUrl: string;
+  analysisUrl: string;
+  verificationConfidence: number;
+};
+
+const REQUIRED_STEPS: CaptureStep[] = [
+  {
+    id: "front",
+    label: "Front",
+    verificationHint: "Frame the full front fascia and headlights."
+  },
+  {
+    id: "driver_side",
+    label: "Driver Side",
+    verificationHint: "Capture the full driver side profile."
+  },
+  {
+    id: "passenger_side",
+    label: "Passenger Side",
+    verificationHint: "Capture the full passenger side profile."
+  },
+  {
+    id: "rear",
+    label: "Rear",
+    verificationHint: "Capture the rear bumper, trunk/hatch, and taillights."
+  },
+  {
+    id: "interior",
+    label: "Interior",
+    verificationHint: "Show dashboard, seats, and cabin condition."
+  },
+  {
+    id: "tire_tread",
+    label: "Tire Tread",
+    verificationHint: "Close-up of one tire so tread wear is clearly visible."
+  }
+];
+
+const MAX_MILEAGE_KM = 2_000_000;
+
+function pickFirstIncomplete(captured: Partial<Record<PhotoView, CapturedShot>>) {
+  return REQUIRED_STEPS.find((step) => !captured[step.id])?.id ?? REQUIRED_STEPS[REQUIRED_STEPS.length - 1].id;
+}
 
 export function CameraScreen({ navigation }: CameraScreenProps) {
   const [vehicleYear, setVehicleYear] = useState("");
   const [vehicleMake, setVehicleMake] = useState("");
   const [vehicleModel, setVehicleModel] = useState("");
-  const [images, setImages] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const { width } = useWindowDimensions();
+  const [vehicleMileageKm, setVehicleMileageKm] = useState("");
+  const [capturedShots, setCapturedShots] = useState<Partial<Record<PhotoView, CapturedShot>>>({});
+  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
 
+  const parsedYear = Number(vehicleYear.trim());
+  const parsedMileage = Number(vehicleMileageKm.replace(/[^\d]/g, ""));
   const isVehicleInfoValid = useMemo(() => {
-    const year = Number(vehicleYear.trim());
     const currentYear = new Date().getFullYear();
     const isYearValid =
-      /^\d{4}$/.test(vehicleYear.trim()) && year >= 1886 && year <= currentYear + 1;
+      /^\d{4}$/.test(vehicleYear.trim()) && parsedYear >= 1886 && parsedYear <= currentYear + 1;
+    const isMileageValid = Number.isFinite(parsedMileage) && parsedMileage >= 0 && parsedMileage <= MAX_MILEAGE_KM;
 
-    return Boolean(vehicleMake.trim() && vehicleModel.trim() && isYearValid);
-  }, [vehicleYear, vehicleMake, vehicleModel]);
+    return Boolean(vehicleMake.trim() && vehicleModel.trim() && isYearValid && isMileageValid);
+  }, [vehicleYear, vehicleMake, vehicleModel, parsedYear, parsedMileage]);
 
-  const canAnalyze = useMemo(
-    () => images.length >= MIN_IMAGES && isVehicleInfoValid,
-    [images.length, isVehicleInfoValid]
-  );
-  const previewSize = useMemo(() => {
-    const horizontalPadding = 32; // 16 left + 16 right from screen content
-    const gaps = 16; // 8 + 8 for 3 columns
-    return Math.floor((width - horizontalPadding - gaps) / 3);
-  }, [width]);
+  const completedCount = REQUIRED_STEPS.reduce((count, step) => count + (capturedShots[step.id] ? 1 : 0), 0);
+  const canAnalyze = completedCount === REQUIRED_STEPS.length && isVehicleInfoValid;
+  const activeStepId = pickFirstIncomplete(capturedShots);
+  const activeStep = REQUIRED_STEPS.find((step) => step.id === activeStepId) ?? REQUIRED_STEPS[0];
+  const activeShot = capturedShots[activeStep.id];
+
+  function getKnownVehicle() {
+    if (!isVehicleInfoValid) {
+      throw new Error("Enter valid make, model, year, and mileage (km) first.");
+    }
+
+    return {
+      make: vehicleMake.trim(),
+      model: vehicleModel.trim(),
+      year: parsedYear,
+      mileageKm: parsedMileage
+    };
+  }
+
+  async function verifyAndStorePhoto(localUri: string) {
+    let stage = "auth";
+    try {
+      const knownVehicle = getKnownVehicle();
+      setLoadingMessage(`Verifying ${activeStep.label.toLowerCase()} photo...`);
+
+      const {
+        data: { user },
+        error: userError
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        throw new Error(userError?.message ?? "You need to be logged in.");
+      }
+
+      stage = "upload_photo";
+      const uploaded = await uploadCarImage(localUri, user.id, `${activeStep.id}-${Date.now()}`);
+
+      stage = "verify_photo";
+      const referenceSideUrl =
+        activeStep.id === "passenger_side" ? capturedShots.driver_side?.analysisUrl : undefined;
+      const verification = await verifyCarPhoto(
+        uploaded.analysisUrl,
+        activeStep.id,
+        knownVehicle,
+        referenceSideUrl
+      );
+
+      if (!verification.isMatch) {
+        const mismatchMessage = `${activeStep.label} check failed. Detected: ${verification.detectedView}. ${verification.reason || "Please retake."}`;
+        Alert.alert("Photo didn't match required angle", mismatchMessage);
+        return;
+      }
+
+      setCapturedShots((prev) => ({
+        ...prev,
+        [activeStep.id]: {
+          localUri,
+          publicUrl: uploaded.publicUrl,
+          analysisUrl: uploaded.analysisUrl,
+          verificationConfidence: verification.confidence
+        }
+      }));
+
+      logInfo("CameraScreen", "Photo verified and stored.", {
+        step: activeStep.id,
+        confidence: verification.confidence
+      });
+    } catch (error: any) {
+      logError("CameraScreen", error, { stage, step: activeStep.id });
+      Alert.alert("Photo verification failed", error?.message ?? "Please try again.");
+    } finally {
+      setLoadingMessage(null);
+    }
+  }
+
+  function enforceVehicleDetailsBeforePhotos() {
+    if (isVehicleInfoValid) return true;
+    Alert.alert("Vehicle details required", "Enter make, model, year, and mileage (km) before photos.");
+    return false;
+  }
 
   async function addFromCamera() {
     try {
-      if (images.length >= MAX_IMAGES) {
-        Alert.alert("Limit reached", `You can upload up to ${MAX_IMAGES} images.`);
-        return;
-      }
+      if (!enforceVehicleDetailsBeforePhotos()) return;
 
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
@@ -77,8 +195,7 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
       });
 
       if (!result.canceled && result.assets.length > 0) {
-        logInfo("CameraScreen", "Captured camera image.", { count: result.assets.length });
-        setImages((prev) => [...prev, result.assets[0].uri]);
+        await verifyAndStorePhoto(result.assets[0].uri);
       }
     } catch (error) {
       logError("CameraScreen", error, { stage: "addFromCamera" });
@@ -88,10 +205,7 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
 
   async function addFromLibrary() {
     try {
-      if (images.length >= MAX_IMAGES) {
-        Alert.alert("Limit reached", `You can upload up to ${MAX_IMAGES} images.`);
-        return;
-      }
+      if (!enforceVehicleDetailsBeforePhotos()) return;
 
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
@@ -104,49 +218,79 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         preferredAssetRepresentationMode:
           ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
-        allowsMultipleSelection: true,
-        selectionLimit: MAX_IMAGES - images.length,
+        allowsMultipleSelection: false,
         quality: 0.8
       });
 
       if (!result.canceled && result.assets.length > 0) {
-        logInfo("CameraScreen", "Selected images from library.", { count: result.assets.length });
-        setImages((prev) => {
-          const nextUris = result.assets.map((asset) => asset.uri);
-          return [...prev, ...nextUris].slice(0, MAX_IMAGES);
-        });
+        await verifyAndStorePhoto(result.assets[0].uri);
       }
     } catch (error) {
       logError("CameraScreen", error, { stage: "addFromLibrary" });
-      Alert.alert("Library error", "Could not select images.");
+      Alert.alert("Library error", "Could not select image.");
     }
   }
 
+  function clearActiveShot() {
+    setCapturedShots((prev) => {
+      const next = { ...prev };
+      delete next[activeStep.id];
+      return next;
+    });
+  }
+
   async function handleAnalyze() {
-    if (images.length < MIN_IMAGES) {
-      Alert.alert("Need more photos", `Please add at least ${MIN_IMAGES} photos.`);
+    if (!canAnalyze) {
+      Alert.alert(
+        "Capture all required photos",
+        "Complete all six verified photos and vehicle details before running analysis."
+      );
       return;
     }
 
-    if (!isVehicleInfoValid) {
-      Alert.alert("Vehicle details required", "Enter a valid year, make, and model first.");
-      return;
-    }
-
-    const knownVehicle = {
-      year: Number(vehicleYear.trim()),
-      make: vehicleMake.trim(),
-      model: vehicleModel.trim()
-    };
-
-    setLoading(true);
-    let stage = "auth";
+    setLoadingMessage("Running full vehicle analysis...");
+    let stage = "analyze";
     try {
-      logInfo("CameraScreen", "Analyze request started.", {
-        imageCount: images.length,
-        knownVehicle
+      const knownVehicle = getKnownVehicle();
+      const orderedShots = REQUIRED_STEPS.map((step) => {
+        const shot = capturedShots[step.id];
+        if (!shot) {
+          throw new Error(`Missing required photo: ${step.label}`);
+        }
+        return { step, shot };
       });
 
+      const imageSet = orderedShots.map(({ step, shot }) => ({
+        view: step.id,
+        url: shot.analysisUrl
+      }));
+
+      stage = "invoke_ai";
+      const analysis = await analyzeCarImages(imageSet, knownVehicle);
+      const resolvedAnalysis = {
+        ...analysis,
+        make: knownVehicle.make,
+        model: knownVehicle.model,
+        year: knownVehicle.year,
+        mileageKm: knownVehicle.mileageKm
+      };
+
+      const fallbackBase = estimateBasePrice(
+        resolvedAnalysis.make,
+        resolvedAnalysis.model,
+        resolvedAnalysis.year
+      );
+      const estimatedValue =
+        resolvedAnalysis.marketValuation?.estimatedValue ??
+        calculateEstimatedValue(
+          fallbackBase,
+          resolvedAnalysis.condition,
+          resolvedAnalysis.mileageKm,
+          resolvedAnalysis.year,
+          resolvedAnalysis.detectedMods
+        );
+
+      stage = "save_database";
       const {
         data: { user },
         error: userError
@@ -156,71 +300,41 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
         throw new Error(userError?.message ?? "You need to be logged in.");
       }
 
-      stage = "upload_images";
-      const uploaded = await Promise.all(
-        images.map((uri, index) => uploadCarImage(uri, user.id, index))
-      );
-      const analysisImageUrls = uploaded.map((item) => item.analysisUrl);
-      const storedImageUrls = uploaded.map((item) => item.publicUrl);
-      logInfo("CameraScreen", "Images uploaded.", {
-        count: analysisImageUrls.length,
-        usingSignedUrls: true
-      });
-
-      stage = "invoke_ai";
-      const analysis = await analyzeCarImages(analysisImageUrls, knownVehicle);
-      const resolvedAnalysis = {
-        ...analysis,
-        make: knownVehicle.make,
-        model: knownVehicle.model,
-        year: knownVehicle.year
-      };
-
-      logInfo("CameraScreen", "AI analysis received.", {
-        make: resolvedAnalysis.make,
-        model: resolvedAnalysis.model,
-        year: resolvedAnalysis.year
-      });
-
-      stage = "valuation";
-      const basePrice = estimateBasePrice(
-        resolvedAnalysis.make,
-        resolvedAnalysis.model,
-        resolvedAnalysis.year
-      );
-      const estimatedValue = calculateEstimatedValue(basePrice, resolvedAnalysis.condition);
-
-      stage = "save_database";
       const savedCar = await saveCarAnalysis({
         userId: user.id,
-        imageUrls: storedImageUrls,
+        mileageKm: knownVehicle.mileageKm,
+        imageUrls: orderedShots.map(({ shot }) => shot.publicUrl),
+        photoAngles: orderedShots.map(({ step }) => step.id),
         analysisResult: resolvedAnalysis,
         estimatedValue
       });
 
-      logInfo("CameraScreen", "Analysis saved successfully.", { carId: savedCar.id });
+      logInfo("CameraScreen", "Analysis saved successfully.", {
+        carId: savedCar.id,
+        estimatedValue
+      });
       navigation.replace("Result", { car: savedCar });
     } catch (error: any) {
-      logError("CameraScreen", error, { stage, imageCount: images.length });
+      logError("CameraScreen", error, { stage });
       Alert.alert("Analysis failed", error?.message ?? "Please try again.");
     } finally {
-      setLoading(false);
+      setLoadingMessage(null);
     }
   }
 
-  if (loading) {
-    return <LoadingOverlay message="Analyzing car..." />;
+  if (loadingMessage) {
+    return <LoadingOverlay message={loadingMessage} />;
   }
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Capture Car Photos</Text>
+        <Text style={styles.title}>Vehicle Intake</Text>
         <Text style={styles.subtitle}>
-          Take or upload {MIN_IMAGES} to {MAX_IMAGES} images from different angles.
+          Enter vehicle details, then complete each required photo with automatic angle verification.
         </Text>
-        <Text style={styles.sectionTitle}>Vehicle Details</Text>
 
+        <Text style={styles.sectionTitle}>Vehicle Details</Text>
         <View style={styles.formGroup}>
           <TextField
             label="Year"
@@ -228,53 +342,82 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
             onChangeText={setVehicleYear}
             keyboardType="number-pad"
             autoCapitalize="none"
+            placeholder="e.g. 2019"
           />
           <TextField
             label="Make"
             value={vehicleMake}
             onChangeText={setVehicleMake}
             autoCapitalize="words"
+            placeholder="e.g. Honda"
           />
           <TextField
             label="Model"
             value={vehicleModel}
             onChangeText={setVehicleModel}
             autoCapitalize="words"
+            placeholder="e.g. Civic"
+          />
+          <TextField
+            label="Mileage (km)"
+            value={vehicleMileageKm}
+            onChangeText={(value) => setVehicleMileageKm(value.replace(/[^\d]/g, ""))}
+            keyboardType="number-pad"
+            autoCapitalize="none"
+            placeholder="e.g. 125000"
           />
         </View>
 
-        <View style={styles.buttonGroup}>
-          <PrimaryButton title="Take Photo" onPress={addFromCamera} />
-          <PrimaryButton title="Upload From Library" onPress={addFromLibrary} variant="secondary" />
-        </View>
-
-        <Text style={styles.counter}>
-          Photos: {images.length}/{MAX_IMAGES}
+        <Text style={styles.sectionTitle}>
+          Required Photos ({completedCount}/{REQUIRED_STEPS.length})
         </Text>
-
-        <View style={styles.previewGrid}>
-          {images.map((uri, index) => (
-            <View
-              key={`${uri}-${index}`}
-              style={[
-                styles.previewCell,
-                {
-                  width: previewSize,
-                  height: previewSize
-                }
-              ]}
-            >
-              <Image source={{ uri }} style={styles.previewImage} resizeMode="cover" />
-            </View>
-          ))}
+        <View style={styles.stepsList}>
+          {REQUIRED_STEPS.map((step, index) => {
+            const shot = capturedShots[step.id];
+            const isActive = step.id === activeStep.id;
+            return (
+              <View
+                key={step.id}
+                style={[
+                  styles.stepCard,
+                  shot ? styles.stepDone : styles.stepPending,
+                  isActive && styles.stepActive
+                ]}
+              >
+                <View style={styles.stepTextWrap}>
+                  <Text style={styles.stepLabel}>
+                    {index + 1}. {step.label}
+                  </Text>
+                  <Text style={styles.stepStatus}>
+                    {shot
+                      ? `Verified (${Math.round(shot.verificationConfidence * 100)}%)`
+                      : "Waiting for photo"}
+                  </Text>
+                </View>
+                {shot ? <Image source={{ uri: shot.localUri }} style={styles.stepThumb} /> : null}
+              </View>
+            );
+          })}
         </View>
 
-        <PrimaryButton
-          title="Analyze Car"
-          onPress={handleAnalyze}
-          disabled={!canAnalyze}
-          loading={loading}
-        />
+        <View style={styles.activePanel}>
+          <Text style={styles.activeTitle}>Active Step: {activeStep.label}</Text>
+          <Text style={styles.activeHint}>{activeStep.verificationHint}</Text>
+          {activeShot ? <Image source={{ uri: activeShot.localUri }} style={styles.activePreview} /> : null}
+          <View style={styles.buttonGroup}>
+            <PrimaryButton title={activeShot ? "Retake With Camera" : "Take Photo"} onPress={addFromCamera} />
+            <PrimaryButton
+              title={activeShot ? "Replace From Library" : "Upload From Library"}
+              onPress={addFromLibrary}
+              variant="secondary"
+            />
+            {activeShot ? (
+              <PrimaryButton title="Clear Current Photo" onPress={clearActiveShot} variant="secondary" />
+            ) : null}
+          </View>
+        </View>
+
+        <PrimaryButton title="Run Analysis" onPress={handleAnalyze} disabled={!canAnalyze} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -287,7 +430,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 16,
-    paddingBottom: 24,
+    paddingBottom: 28,
     gap: 14
   },
   title: {
@@ -308,28 +451,77 @@ const styles = StyleSheet.create({
   formGroup: {
     gap: 10
   },
-  buttonGroup: {
-    gap: 10
-  },
-  counter: {
-    fontSize: 14,
-    color: "#27415E",
-    fontWeight: "600"
-  },
-  previewGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+  stepsList: {
     gap: 8
   },
-  previewCell: {
+  stepCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10
+  },
+  stepPending: {
+    borderColor: "#C8D5E5",
+    backgroundColor: "#FFFFFF"
+  },
+  stepDone: {
+    borderColor: "#91C8A5",
+    backgroundColor: "#EAF8EE"
+  },
+  stepActive: {
+    borderColor: "#0E4F8A",
+    borderWidth: 2
+  },
+  stepTextWrap: {
+    flex: 1,
+    gap: 4
+  },
+  stepLabel: {
+    fontSize: 15,
+    color: "#0A1728",
+    fontWeight: "700"
+  },
+  stepStatus: {
+    fontSize: 13,
+    color: "#35516D",
+    fontWeight: "500"
+  },
+  stepThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#B8C8DA"
+  },
+  activePanel: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#D8E2EF",
+    padding: 12,
+    gap: 10
+  },
+  activeTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0A1728"
+  },
+  activeHint: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#35516D"
+  },
+  activePreview: {
+    width: "100%",
+    height: 180,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#CFDBE9",
-    overflow: "hidden",
-    backgroundColor: "#DEE7F1"
+    borderColor: "#CCD9E8"
   },
-  previewImage: {
-    width: "100%",
-    height: "100%"
+  buttonGroup: {
+    gap: 10
   }
 });
