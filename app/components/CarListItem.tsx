@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { CarWithRelations } from "../types";
 import { formatCurrency, formatDate } from "../utils/format";
@@ -6,25 +7,49 @@ import { formatCurrency, formatDate } from "../utils/format";
 type CarListItemProps = {
   car: CarWithRelations;
   onPress: () => void;
+  index?: number;
 };
 
-export function CarListItem({ car, onPress }: CarListItemProps) {
+export function CarListItem({ car, onPress, index = 0 }: CarListItemProps) {
   const mileage =
     car.mileage_km !== null
       ? `${new Intl.NumberFormat("en-US").format(car.mileage_km)} km`
       : "Mileage N/A";
 
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(18)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 320,
+        delay: index * 65,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        delay: index * 65,
+        damping: 22,
+        stiffness: 220,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
-      <View style={styles.headerRow}>
-        <Text style={styles.title}>
-          {car.year} {car.make} {car.model}
-        </Text>
-        <Text style={styles.value}>{formatCurrency(car.estimated_value)}</Text>
-      </View>
-      <Text style={styles.meta}>{mileage}</Text>
-      <Text style={styles.meta}>{formatDate(car.created_at)}</Text>
-    </Pressable>
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+      <Pressable onPress={onPress} style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
+        <View style={styles.headerRow}>
+          <Text style={styles.title}>
+            {car.year} {car.make} {car.model}
+          </Text>
+          <Text style={styles.value}>{formatCurrency(car.estimated_value)}</Text>
+        </View>
+        <Text style={styles.meta}>{mileage}</Text>
+        <Text style={styles.meta}>{formatDate(car.created_at)}</Text>
+      </Pressable>
+    </Animated.View>
   );
 }
 

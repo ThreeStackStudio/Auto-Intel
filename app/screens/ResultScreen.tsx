@@ -1,4 +1,5 @@
-import { Alert, Linking, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Animated, Easing, Linking, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import { ConditionBar } from "../components/ConditionBar";
@@ -59,6 +60,21 @@ export function ResultScreen({ navigation, route }: ResultScreenProps) {
   const modsFactor = Number(details?.mods_adjustment_factor ?? 1);
   const userNotes = String(car.user_notes ?? "").trim();
 
+  const estimatedValue = car.estimated_value ?? 0;
+  const [displayPrice, setDisplayPrice] = useState(0);
+  const priceAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const listener = priceAnim.addListener(({ value }) => setDisplayPrice(Math.round(value)));
+    Animated.timing(priceAnim, {
+      toValue: estimatedValue,
+      duration: 1200,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+    return () => priceAnim.removeListener(listener);
+  }, [estimatedValue]);
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -75,7 +91,7 @@ export function ResultScreen({ navigation, route }: ResultScreenProps) {
               <Text style={styles.summary}>{userNotes}</Text>
             </>
           ) : null}
-          <Text style={styles.price}>{formatCurrency(car.estimated_value)}</Text>
+          <Text style={styles.price}>{formatCurrency(displayPrice)}</Text>
           <Text style={styles.meta}>All monetary values shown in CAD</Text>
           <Text style={styles.confidence}>Confidence: {formatPercent(confidence)}</Text>
         </View>

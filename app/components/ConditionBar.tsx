@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { Animated, Easing, StyleSheet, Text, View } from "react-native";
 
 import { formatPercent } from "../utils/format";
 
@@ -19,16 +20,30 @@ function clamp01(value: number | string | null | undefined) {
 export function ConditionBar({ label, value, inverse = false }: ConditionBarProps) {
   const normalized = clamp01(value);
   const visualValue = inverse ? 1 - normalized : normalized;
-  const displayedValue = visualValue;
+  const animWidth = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(animWidth, {
+      toValue: visualValue,
+      duration: 900,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [visualValue]);
+
+  const widthPct = animWidth.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0%", "100%"],
+  });
 
   return (
     <View style={styles.container}>
       <View style={styles.row}>
         <Text style={styles.label}>{label}</Text>
-        <Text style={styles.value}>{formatPercent(displayedValue)}</Text>
+        <Text style={styles.value}>{formatPercent(visualValue)}</Text>
       </View>
       <View style={styles.track}>
-        <View style={[styles.fill, { width: `${Math.round(visualValue * 100)}%` }]} />
+        <Animated.View style={[styles.fill, { width: widthPct }]} />
       </View>
     </View>
   );

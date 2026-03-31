@@ -69,8 +69,8 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
               <Text style={styles.emptySubtitle}>Scan your first car to start building history.</Text>
             </View>
           }
-          renderItem={({ item }) => (
-            <CarListItem car={item} onPress={() => navigation.navigate("Result", { car: item })} />
+          renderItem={({ item, index }) => (
+            <CarListItem car={item} index={index} onPress={() => navigation.navigate("Result", { car: item })} />
           )}
         />
       </View>
