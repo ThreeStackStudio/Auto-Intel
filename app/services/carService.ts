@@ -22,6 +22,7 @@ export async function fetchUserCars(): Promise<CarWithRelations[]> {
       model,
       year,
       mileage_km,
+      user_notes,
       estimated_value,
       confidence,
       created_at,
@@ -69,6 +70,7 @@ export async function fetchUserCars(): Promise<CarWithRelations[]> {
 type SaveCarAnalysisArgs = {
   userId: string;
   mileageKm: number;
+  userNotes?: string | null;
   imageUrls: string[];
   photoAngles: string[];
   analysisResult: AnalysisResult;
@@ -76,7 +78,7 @@ type SaveCarAnalysisArgs = {
 };
 
 export async function saveCarAnalysis(args: SaveCarAnalysisArgs): Promise<CarWithRelations> {
-  const { userId, mileageKm, imageUrls, photoAngles, analysisResult, estimatedValue } = args;
+  const { userId, mileageKm, userNotes, imageUrls, photoAngles, analysisResult, estimatedValue } = args;
   let createdCarId: string | null = null;
 
   try {
@@ -88,6 +90,7 @@ export async function saveCarAnalysis(args: SaveCarAnalysisArgs): Promise<CarWit
         model: analysisResult.model,
         year: Number.isFinite(analysisResult.year) ? analysisResult.year : new Date().getFullYear(),
         mileage_km: Number.isFinite(mileageKm) ? Math.max(0, Math.round(mileageKm)) : null,
+        user_notes: userNotes?.trim() ? userNotes.trim() : null,
         estimated_value: estimatedValue,
         confidence: analysisResult.confidence
       })
@@ -99,6 +102,7 @@ export async function saveCarAnalysis(args: SaveCarAnalysisArgs): Promise<CarWit
         model,
         year,
         mileage_km,
+        user_notes,
         estimated_value,
         confidence,
         created_at

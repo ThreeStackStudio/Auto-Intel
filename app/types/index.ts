@@ -79,6 +79,7 @@ export type CarRow = {
   model: string;
   year: number;
   mileage_km: number | null;
+  user_notes: string | null;
   estimated_value: number;
   confidence: number;
   created_at: string;

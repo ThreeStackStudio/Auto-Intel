@@ -15,6 +15,7 @@ create table if not exists public.cars (
   model text not null,
   year integer not null,
   mileage_km integer check (mileage_km is null or mileage_km >= 0),
+  user_notes text,
   estimated_value double precision not null,
   confidence double precision not null check (confidence >= 0 and confidence <= 1),
   created_at timestamptz not null default now()
@@ -47,6 +48,9 @@ create table if not exists public.analysis (
 
 alter table public.cars
   add column if not exists mileage_km integer check (mileage_km is null or mileage_km >= 0);
+
+alter table public.cars
+  add column if not exists user_notes text;
 
 alter table public.analysis
   add column if not exists detected_mods jsonb not null default '[]'::jsonb;

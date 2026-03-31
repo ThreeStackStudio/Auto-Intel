@@ -1,4 +1,4 @@
-import { SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import { ConditionBar } from "../components/ConditionBar";
@@ -14,6 +14,25 @@ function toCadAmount(price: number, currency: string | undefined) {
     return Math.round(price * USD_TO_CAD_RATE);
   }
   return Math.round(price);
+}
+
+async function openListingUrl(url: string) {
+  const trimmed = url.trim();
+  if (!trimmed) return;
+
+  const hasScheme = /^https?:\/\//i.test(trimmed);
+  const finalUrl = hasScheme ? trimmed : `https://${trimmed}`;
+
+  try {
+    const supported = await Linking.canOpenURL(finalUrl);
+    if (!supported) {
+      Alert.alert("Can't open link", "This listing URL is not supported on your device.");
+      return;
+    }
+    await Linking.openURL(finalUrl);
+  } catch {
+    Alert.alert("Can't open link", "Something went wrong while trying to open this listing.");
+  }
 }
 
 export function ResultScreen({ navigation, route }: ResultScreenProps) {
@@ -38,6 +57,7 @@ export function ResultScreen({ navigation, route }: ResultScreenProps) {
   const conditionFactor = Number(details?.condition_adjustment_factor ?? 1);
   const mileageFactor = Number(details?.mileage_adjustment_factor ?? 1);
   const modsFactor = Number(details?.mods_adjustment_factor ?? 1);
+  const userNotes = String(car.user_notes ?? "").trim();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -49,6 +69,12 @@ export function ResultScreen({ navigation, route }: ResultScreenProps) {
             {car.year} {car.make} {car.model}
           </Text>
           <Text style={styles.meta}>Mileage: {mileageLabel}</Text>
+          {userNotes ? (
+            <>
+              <Text style={styles.sectionTitle}>Your Notes</Text>
+              <Text style={styles.summary}>{userNotes}</Text>
+            </>
+          ) : null}
           <Text style={styles.price}>{formatCurrency(car.estimated_value)}</Text>
           <Text style={styles.meta}>All monetary values shown in CAD</Text>
           <Text style={styles.confidence}>Confidence: {formatPercent(confidence)}</Text>
@@ -100,9 +126,16 @@ export function ResultScreen({ navigation, route }: ResultScreenProps) {
               <>
                 <Text style={styles.sectionTitle}>Market Comps</Text>
                 {listings.slice(0, 4).map((listing, index) => (
-                  <Text key={`${listing.title}-${index}`} style={styles.summary}>
-                    {listing.source}: {listing.title} - {formatCurrency(toCadAmount(listing.price, listing.currency))}
-                  </Text>
+                  <View key={`${listing.title}-${index}`} style={styles.compItem}>
+                    <Text style={styles.summary}>
+                      {listing.source}: {listing.title} - {formatCurrency(toCadAmount(listing.price, listing.currency))}
+                    </Text>
+                    {typeof listing.url === "string" && listing.url.trim() ? (
+                      <Text style={styles.link} onPress={() => void openListingUrl(listing.url)}>
+                        View listing
+                      </Text>
+                    ) : null}
+                  </View>
                 ))}
               </>
             ) : null}
@@ -173,5 +206,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     color: "#25425E"
+  },
+  compItem: {
+    gap: 4
+  },
+  link: {
+    fontSize: 14,
+    color: "#0E4F8A",
+    fontWeight: "700",
+    textDecorationLine: "underline"
   }
 });

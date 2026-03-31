@@ -667,6 +667,10 @@ Return ONLY JSON:
 
 async function handleAnalyzeVehicle(input: Record<string, unknown>) {
   const knownVehicle = normalizeKnownVehicle(input.knownVehicle);
+  const userProvidedDetailsRaw = String(
+    input.userProvidedDetails ?? input.user_provided_details ?? input.additionalDescription ?? ""
+  ).trim();
+  const userProvidedDetails = userProvidedDetailsRaw.slice(0, 500);
   const imageSet = normalizeImageSet(input.imageSet);
   const fallbackUrls = Array.isArray(input.imageUrls)
     ? input.imageUrls.filter((value): value is string => typeof value === "string" && value.length > 0)
@@ -706,9 +710,14 @@ Vehicle details provided by user (authoritative):
 - year: ${knownVehicle.year}
 - mileage_km: ${knownVehicle.mileageKm}
 
+Additional user-provided details beyond photos:
+${userProvidedDetails || "None provided."}
+
 You are given labeled vehicle photos and scraped market listing comps from AutoTrader and Facebook Marketplace.
 All listing prices below are normalized to CAD.
-Use only visible evidence for condition and modifications.
+Use visible evidence plus the user-provided details for condition and modifications.
+If user-provided details describe maintenance, repairs, or upgrades, include them in detected_mods when relevant.
+Use conservative impact_percent values when evidence is limited, and explain assumptions in notes.
 
 Listing comps:
 ${marketContext}

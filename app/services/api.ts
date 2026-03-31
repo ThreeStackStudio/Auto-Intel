@@ -395,17 +395,20 @@ export async function verifyCarPhoto(
 
 export async function analyzeCarImages(
   imageSet: AnalysisImageInput[],
-  knownVehicle?: KnownVehicleInput
+  knownVehicle?: KnownVehicleInput,
+  userProvidedDetails?: string
 ): Promise<AnalysisResult> {
   logInfo("API", "analyzeCarImages called.", {
     imageCount: imageSet.length,
-    knownVehicle
+    knownVehicle,
+    hasUserProvidedDetails: Boolean(userProvidedDetails?.trim())
   });
 
   const data = await invokeAnalyzeCar({
     mode: "analyze_vehicle",
     imageSet,
-    knownVehicle
+    knownVehicle,
+    userProvidedDetails
   });
 
   logInfo("API", "analyze-car function succeeded.");

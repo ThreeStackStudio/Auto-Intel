@@ -71,6 +71,7 @@ const REQUIRED_STEPS: CaptureStep[] = [
 ];
 
 const MAX_MILEAGE_KM = 2_000_000;
+const MAX_USER_DETAILS_LENGTH = 220;
 
 function pickFirstIncomplete(captured: Partial<Record<PhotoView, CapturedShot>>) {
   return REQUIRED_STEPS.find((step) => !captured[step.id])?.id ?? REQUIRED_STEPS[REQUIRED_STEPS.length - 1].id;
@@ -81,6 +82,7 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
   const [vehicleMake, setVehicleMake] = useState("");
   const [vehicleModel, setVehicleModel] = useState("");
   const [vehicleMileageKm, setVehicleMileageKm] = useState("");
+  const [userProvidedDetails, setUserProvidedDetails] = useState("");
   const [capturedShots, setCapturedShots] = useState<Partial<Record<PhotoView, CapturedShot>>>({});
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
 
@@ -264,9 +266,14 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
         view: step.id,
         url: shot.analysisUrl
       }));
+      const trimmedUserDetails = userProvidedDetails.trim();
 
       stage = "invoke_ai";
-      const analysis = await analyzeCarImages(imageSet, knownVehicle);
+      const analysis = await analyzeCarImages(
+        imageSet,
+        knownVehicle,
+        trimmedUserDetails.length > 0 ? trimmedUserDetails : undefined
+      );
       const resolvedAnalysis = {
         ...analysis,
         make: knownVehicle.make,
@@ -303,6 +310,7 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
       const savedCar = await saveCarAnalysis({
         userId: user.id,
         mileageKm: knownVehicle.mileageKm,
+        userNotes: trimmedUserDetails.length > 0 ? trimmedUserDetails : null,
         imageUrls: orderedShots.map(({ shot }) => shot.publicUrl),
         photoAngles: orderedShots.map(({ step }) => step.id),
         analysisResult: resolvedAnalysis,
@@ -366,6 +374,17 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
             autoCapitalize="none"
             placeholder="e.g. 125000"
           />
+          <TextField
+            label="Recent work or upgrades (optional)"
+            value={userProvidedDetails}
+            onChangeText={(value) => setUserProvidedDetails(value.slice(0, MAX_USER_DETAILS_LENGTH))}
+            autoCapitalize="sentences"
+            placeholder="e.g. New brakes + tires last month"
+          />
+          <Text style={styles.fieldHint}>
+            Add a short note about repairs, maintenance, or upgrades not obvious from photos (
+            {userProvidedDetails.length}/{MAX_USER_DETAILS_LENGTH}).
+          </Text>
         </View>
 
         <Text style={styles.sectionTitle}>
@@ -450,6 +469,11 @@ const styles = StyleSheet.create({
   },
   formGroup: {
     gap: 10
+  },
+  fieldHint: {
+    fontSize: 12,
+    color: "#4A6886",
+    lineHeight: 18
   },
   stepsList: {
     gap: 8
