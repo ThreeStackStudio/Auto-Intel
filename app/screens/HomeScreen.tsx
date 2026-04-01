@@ -13,6 +13,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import { CarListItem } from "../components/CarListItem";
 import { PrimaryButton } from "../components/PrimaryButton";
+import { SkeletonCard } from "../components/SkeletonCard";
 import { fetchUserCars } from "../services/carService";
 import { supabase } from "../services/supabase";
 import type { CarWithRelations, RootStackParamList } from "../types";
@@ -22,6 +23,7 @@ type HomeScreenProps = NativeStackScreenProps<RootStackParamList, "Home">;
 export function HomeScreen({ navigation }: HomeScreenProps) {
   const [history, setHistory] = useState<CarWithRelations[]>([]);
   const [loading, setLoading] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
@@ -32,6 +34,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       Alert.alert("Could not load history", error?.message ?? "Please try again.");
     } finally {
       setLoading(false);
+      setInitialLoad(false);
     }
   }, []);
 
@@ -58,21 +61,27 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         <PrimaryButton title="Logout" onPress={handleLogout} variant="secondary" />
 
         <Text style={styles.sectionTitle}>Previous Analyses</Text>
-        <FlatList
-          data={history}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={loadHistory} />}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No scans yet</Text>
-              <Text style={styles.emptySubtitle}>Scan your first car to start building history.</Text>
-            </View>
-          }
-          renderItem={({ item, index }) => (
-            <CarListItem car={item} index={index} onPress={() => navigation.navigate("Result", { car: item })} />
-          )}
-        />
+        {initialLoad && loading ? (
+          <View style={styles.listContent}>
+            {[0, 1, 2, 3].map((i) => <SkeletonCard key={i} />)}
+          </View>
+        ) : (
+          <FlatList
+            data={history}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            refreshControl={<RefreshControl refreshing={loading} onRefresh={loadHistory} />}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyTitle}>No scans yet</Text>
+                <Text style={styles.emptySubtitle}>Scan your first car to start building history.</Text>
+              </View>
+            }
+            renderItem={({ item, index }) => (
+              <CarListItem car={item} index={index} onPress={() => navigation.navigate("Result", { car: item })} />
+            )}
+          />
+        )}
       </View>
     </SafeAreaView>
   );
