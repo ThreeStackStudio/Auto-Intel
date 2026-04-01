@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -85,6 +86,9 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
   const [userProvidedDetails, setUserProvidedDetails] = useState("");
   const [capturedShots, setCapturedShots] = useState<Partial<Record<PhotoView, CapturedShot>>>({});
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
+  const [selectedStepId, setSelectedStepId] = useState<PhotoView | null>(null);
+  const [isAnalysing, setIsAnalysing] = useState(false);
+  const isCancelledRef = useRef(false);
 
   const parsedYear = Number(vehicleYear.trim());
   const parsedMileage = Number(vehicleMileageKm.replace(/[^\d]/g, ""));
@@ -99,7 +103,7 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
 
   const completedCount = REQUIRED_STEPS.reduce((count, step) => count + (capturedShots[step.id] ? 1 : 0), 0);
   const canAnalyze = completedCount === REQUIRED_STEPS.length && isVehicleInfoValid;
-  const activeStepId = pickFirstIncomplete(capturedShots);
+  const activeStepId = selectedStepId ?? pickFirstIncomplete(capturedShots);
   const activeStep = REQUIRED_STEPS.find((step) => step.id === activeStepId) ?? REQUIRED_STEPS[0];
   const activeShot = capturedShots[activeStep.id];
 
@@ -159,6 +163,7 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
           verificationConfidence: verification.confidence
         }
       }));
+      setSelectedStepId(null);
 
       logInfo("CameraScreen", "Photo verified and stored.", {
         step: activeStep.id,
@@ -241,6 +246,12 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
     });
   }
 
+  function handleCancelAnalysis() {
+    isCancelledRef.current = true;
+    setIsAnalysing(false);
+    setLoadingMessage(null);
+  }
+
   async function handleAnalyze() {
     if (!canAnalyze) {
       Alert.alert(
@@ -250,6 +261,8 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
       return;
     }
 
+    isCancelledRef.current = false;
+    setIsAnalysing(true);
     setLoadingMessage("Running full vehicle analysis...");
     let stage = "analyze";
     try {
@@ -274,6 +287,9 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
         knownVehicle,
         trimmedUserDetails.length > 0 ? trimmedUserDetails : undefined
       );
+
+      if (isCancelledRef.current) return;
+
       const resolvedAnalysis = {
         ...analysis,
         make: knownVehicle.make,
@@ -296,6 +312,8 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
           resolvedAnalysis.year,
           resolvedAnalysis.detectedMods
         );
+
+      if (isCancelledRef.current) return;
 
       stage = "save_database";
       const {
@@ -323,15 +341,18 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
       });
       navigation.replace("Result", { car: savedCar });
     } catch (error: any) {
-      logError("CameraScreen", error, { stage });
-      Alert.alert("Analysis failed", error?.message ?? "Please try again.");
+      if (!isCancelledRef.current) {
+        logError("CameraScreen", error, { stage });
+        Alert.alert("Analysis failed", error?.message ?? "Please try again.");
+      }
     } finally {
+      setIsAnalysing(false);
       setLoadingMessage(null);
     }
   }
 
   if (loadingMessage) {
-    return <LoadingOverlay message={loadingMessage} />;
+    return <LoadingOverlay message={loadingMessage} onCancel={isAnalysing ? handleCancelAnalysis : undefined} />;
   }
 
   return (
@@ -395,12 +416,14 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
             const shot = capturedShots[step.id];
             const isActive = step.id === activeStep.id;
             return (
-              <View
+              <Pressable
                 key={step.id}
-                style={[
+                onPress={() => setSelectedStepId(step.id)}
+                style={({ pressed }) => [
                   styles.stepCard,
                   shot ? styles.stepDone : styles.stepPending,
-                  isActive && styles.stepActive
+                  isActive && styles.stepActive,
+                  pressed && styles.stepPressed
                 ]}
               >
                 <View style={styles.stepTextWrap}>
@@ -409,18 +432,20 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
                   </Text>
                   <Text style={styles.stepStatus}>
                     {shot
-                      ? `Verified (${Math.round(shot.verificationConfidence * 100)}%)`
+                      ? `Verified (${Math.round(shot.verificationConfidence * 100)}%) — tap to retake`
                       : "Waiting for photo"}
                   </Text>
                 </View>
                 {shot ? <Image source={{ uri: shot.localUri }} style={styles.stepThumb} /> : null}
-              </View>
+              </Pressable>
             );
           })}
         </View>
 
         <View style={styles.activePanel}>
-          <Text style={styles.activeTitle}>Active Step: {activeStep.label}</Text>
+          <Text style={styles.activeTitle}>
+            {activeShot ? `Retake: ${activeStep.label}` : `Active Step: ${activeStep.label}`}
+          </Text>
           <Text style={styles.activeHint}>{activeStep.verificationHint}</Text>
           {activeShot ? <Image source={{ uri: activeShot.localUri }} style={styles.activePreview} /> : null}
           <View style={styles.buttonGroup}>
@@ -498,6 +523,9 @@ const styles = StyleSheet.create({
   stepActive: {
     borderColor: "#0E4F8A",
     borderWidth: 2
+  },
+  stepPressed: {
+    opacity: 0.75
   },
   stepTextWrap: {
     flex: 1,
