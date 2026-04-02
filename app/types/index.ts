@@ -107,6 +107,8 @@ export type AnalysisRow = {
   condition_adjustment_factor: number | null;
   mileage_adjustment_factor: number | null;
   mods_adjustment_factor: number | null;
+  low_value: number | null;
+  high_value: number | null;
   created_at: string;
 };
 

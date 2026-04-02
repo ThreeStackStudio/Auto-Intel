@@ -193,6 +193,8 @@ export function ResultScreen({ navigation, route }: ResultScreenProps) {
     : [];
 
   const estimatedValue = car.estimated_value ?? 0;
+  const lowValue = Number(details?.low_value ?? 0);
+  const highValue = Number(details?.high_value ?? 0);
   const [displayPrice, setDisplayPrice] = useState(0);
   const [isSharingImage, setIsSharingImage] = useState(false);
   const [isSharingPdf, setIsSharingPdf] = useState(false);
@@ -320,6 +322,9 @@ export function ResultScreen({ navigation, route }: ResultScreenProps) {
               </>
             ) : null}
             <Text style={styles.price}>{formatCurrency(displayPrice)}</Text>
+            {lowValue > 0 && highValue > 0 ? (
+              <Text style={styles.range}>{formatCurrency(lowValue)} – {formatCurrency(highValue)}</Text>
+            ) : null}
             <Text style={styles.meta}>All monetary values shown in CAD</Text>
             <Text style={styles.confidence}>Confidence: {formatPercent(confidence)}</Text>
           </View>
@@ -497,6 +502,11 @@ function createStyles(colors: AppColors) {
       fontSize: 34,
       fontWeight: "900",
       color: colors.success
+    },
+    range: {
+      fontSize: 14,
+      color: colors.textMuted,
+      fontWeight: "600"
     },
     confidence: {
       fontSize: 14,

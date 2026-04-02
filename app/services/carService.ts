@@ -47,6 +47,8 @@ export async function fetchUserCars(): Promise<CarWithRelations[]> {
         condition_adjustment_factor,
         mileage_adjustment_factor,
         mods_adjustment_factor,
+        low_value,
+        high_value,
         created_at
       )
       `
@@ -153,7 +155,9 @@ export async function saveCarAnalysis(args: SaveCarAnalysisArgs): Promise<CarWit
         base_market_value: analysisResult.marketValuation?.baseMarketValue ?? null,
         condition_adjustment_factor: analysisResult.marketValuation?.conditionAdjustmentFactor ?? null,
         mileage_adjustment_factor: analysisResult.marketValuation?.mileageAdjustmentFactor ?? null,
-        mods_adjustment_factor: analysisResult.marketValuation?.modsAdjustmentFactor ?? null
+        mods_adjustment_factor: analysisResult.marketValuation?.modsAdjustmentFactor ?? null,
+        low_value: analysisResult.marketValuation?.lowValue ?? null,
+        high_value: analysisResult.marketValuation?.highValue ?? null
       })
       .select(
         `
@@ -170,6 +174,8 @@ export async function saveCarAnalysis(args: SaveCarAnalysisArgs): Promise<CarWit
         condition_adjustment_factor,
         mileage_adjustment_factor,
         mods_adjustment_factor,
+        low_value,
+        high_value,
         created_at
         `
       )

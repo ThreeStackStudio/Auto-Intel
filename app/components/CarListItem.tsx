@@ -66,6 +66,8 @@ export function CarListItem({ car, onPress, index = 0 }: CarListItemProps) {
   const mods = details?.detected_mods ?? [];
   const listings = details?.market_listings ?? [];
   const confidence = Number(car.confidence ?? 0);
+  const lowValue = Number(details?.low_value ?? 0);
+  const highValue = Number(details?.high_value ?? 0);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(18)).current;
@@ -128,6 +130,9 @@ export function CarListItem({ car, onPress, index = 0 }: CarListItemProps) {
           <View style={styles.expandedPanel}>
             <View style={styles.divider} />
             <Text style={styles.confidence}>Confidence: {formatPercent(confidence)}</Text>
+            {lowValue > 0 && highValue > 0 ? (
+              <Text style={styles.range}>{formatCurrency(lowValue)} – {formatCurrency(highValue)}</Text>
+            ) : null}
 
             {details ? (
               <>
@@ -252,6 +257,11 @@ function createStyles(colors: AppColors) {
       fontSize: 13,
       color: colors.textMuted,
       fontWeight: "600",
+    },
+    range: {
+      fontSize: 13,
+      color: colors.textMuted,
+      fontWeight: "500",
     },
     sectionLabel: {
       fontSize: 13,

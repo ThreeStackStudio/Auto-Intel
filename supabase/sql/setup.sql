@@ -70,6 +70,12 @@ alter table public.analysis
 alter table public.analysis
   add column if not exists mods_adjustment_factor double precision;
 
+alter table public.analysis
+  add column if not exists low_value double precision;
+
+alter table public.analysis
+  add column if not exists high_value double precision;
+
 create index if not exists idx_cars_user_id on public.cars (user_id);
 create index if not exists idx_images_car_id on public.images (car_id);
 create index if not exists idx_analysis_car_id on public.analysis (car_id);
