@@ -1,5 +1,6 @@
 import type { AnalysisResult, CarWithRelations } from "../types";
 import { supabase } from "./supabase";
+import { logWarn } from "../utils/logger";
 
 const HISTORY_BASE_SELECT = `
   id,
@@ -111,6 +112,8 @@ const ANALYSIS_SELECT_WITH_RANGE = `
   created_at
 `;
 
+const IMAGE_BUCKET = "car-images";
+
 function isMissingRangeColumnError(error: { code?: string; message?: string } | null): boolean {
   if (!error) {
     return false;
@@ -121,6 +124,41 @@ function isMissingRangeColumnError(error: { code?: string; message?: string } | 
 
   const message = (error.message ?? "").toLowerCase();
   return message.includes("low_value") || message.includes("high_value");
+}
+
+function extractStoragePathFromImageUrl(imageUrl: string): string | null {
+  const trimmed = imageUrl.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return trimmed.replace(/^\/+/, "");
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const markers = [
+      `/storage/v1/object/public/${IMAGE_BUCKET}/`,
+      `/storage/v1/object/sign/${IMAGE_BUCKET}/`,
+      `/storage/v1/object/authenticated/${IMAGE_BUCKET}/`,
+      `/storage/v1/object/${IMAGE_BUCKET}/`
+    ];
+
+    for (const marker of markers) {
+      const markerIndex = parsed.pathname.indexOf(marker);
+      if (markerIndex < 0) {
+        continue;
+      }
+      const encodedPath = parsed.pathname.slice(markerIndex + marker.length);
+      const decodedPath = decodeURIComponent(encodedPath).replace(/^\/+/, "");
+      return decodedPath || null;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }
 
 function normalizeRelationArray<T>(value: unknown): T[] {
@@ -318,6 +356,40 @@ export async function deleteCarAnalysis(carId: string): Promise<void> {
   const trimmedId = carId.trim();
   if (!trimmedId) {
     throw new Error("Missing car id.");
+  }
+
+  const { data: imageRows, error: imagesError } = await supabase
+    .from("images")
+    .select("image_url")
+    .eq("car_id", trimmedId);
+
+  if (imagesError) {
+    throw new Error(`Failed to load images for deletion: ${imagesError.message}`);
+  }
+
+  const imagePaths = Array.from(
+    new Set(
+      (imageRows ?? [])
+        .map((row) => extractStoragePathFromImageUrl(String(row.image_url ?? "")))
+        .filter((path): path is string => Boolean(path))
+    )
+  );
+
+  if (imagePaths.length > 0) {
+    const { error: storageError } = await supabase.storage.from(IMAGE_BUCKET).remove(imagePaths);
+    if (storageError) {
+      throw new Error(`Failed to delete stored images: ${storageError.message}`);
+    }
+  }
+
+  const unresolvedImages = (imageRows ?? []).filter(
+    (row) => !extractStoragePathFromImageUrl(String(row.image_url ?? ""))
+  );
+  if (unresolvedImages.length > 0) {
+    logWarn("CarService", "Some image URLs could not be mapped to storage paths.", {
+      carId: trimmedId,
+      unresolvedCount: unresolvedImages.length
+    });
   }
 
   const { error } = await supabase.from("cars").delete().eq("id", trimmedId);
