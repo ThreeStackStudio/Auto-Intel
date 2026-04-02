@@ -23,11 +23,11 @@ import { captureRef } from "react-native-view-shot";
 import { ConditionBar } from "../components/ConditionBar";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { useAppTheme, type AppColors } from "../theme";
+import { useExchangeRate } from "../hooks/useExchangeRate";
 import type { RootStackParamList } from "../types";
 import { formatCurrency, formatPercent } from "../utils/format";
 
 type ResultScreenProps = NativeStackScreenProps<RootStackParamList, "Result">;
-const USD_TO_CAD_RATE = 1.36;
 type ValuationPdfPayload = {
   carTitle: string;
   mileageLabel: string;
@@ -45,6 +45,7 @@ type ValuationPdfPayload = {
   baseMarketValue: number | null;
   mods: { name: string; impactPercent: number; notes?: string }[];
   listings: { source: string; title: string; price: number; currency: string }[];
+  usdToCadRate: number;
 };
 
 function escapeHtml(value: string) {
@@ -63,7 +64,7 @@ function buildList(items: string[]) {
 
 function buildValuationPdfHtml(payload: ValuationPdfPayload) {
   const listings = payload.listings.slice(0, 4).map((listing) => {
-    const cadValue = toCadAmount(listing.price, listing.currency);
+    const cadValue = toCadAmount(listing.price, listing.currency, payload.usdToCadRate);
     return `${listing.source}: ${listing.title} - ${formatCurrency(cadValue)}`;
   });
   const mods = payload.mods.map(
@@ -134,9 +135,9 @@ function formatPhotoLabel(angle: string | null | undefined, index: number) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function toCadAmount(price: number, currency: string | undefined) {
+function toCadAmount(price: number, currency: string | undefined, rate: number) {
   if (String(currency ?? "").toUpperCase() === "USD") {
-    return Math.round(price * USD_TO_CAD_RATE);
+    return Math.round(price * rate);
   }
   return Math.round(price);
 }
@@ -162,6 +163,7 @@ async function openListingUrl(url: string) {
 
 export function ResultScreen({ navigation, route }: ResultScreenProps) {
   const { colors } = useAppTheme();
+  const usdToCadRate = useExchangeRate();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { width: viewportWidth } = useWindowDimensions();
   const { car } = route.params;
@@ -277,7 +279,8 @@ export function ResultScreen({ navigation, route }: ResultScreenProps) {
           title: listing.title,
           price: listing.price,
           currency: listing.currency
-        }))
+        })),
+        usdToCadRate
       });
       const { uri } = await Print.printToFileAsync({ html });
 
@@ -369,7 +372,7 @@ export function ResultScreen({ navigation, route }: ResultScreenProps) {
                   {listings.slice(0, 4).map((listing, index) => (
                     <View key={`${listing.title}-${index}`} style={styles.compItem}>
                       <Text style={styles.summary}>
-                        {listing.source}: {listing.title} - {formatCurrency(toCadAmount(listing.price, listing.currency))}
+                        {listing.source}: {listing.title} - {formatCurrency(toCadAmount(listing.price, listing.currency, usdToCadRate))}
                       </Text>
                       {typeof listing.url === "string" && listing.url.trim() ? (
                         <Text style={styles.link} onPress={() => void openListingUrl(listing.url)}>

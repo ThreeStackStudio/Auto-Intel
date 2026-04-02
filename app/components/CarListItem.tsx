@@ -14,6 +14,7 @@ import {
 
 import { ConditionBar } from "./ConditionBar";
 import { useAppTheme, type AppColors } from "../theme";
+import { useExchangeRate } from "../hooks/useExchangeRate";
 import type { CarWithRelations } from "../types";
 import { formatCurrency, formatDate, formatPercent } from "../utils/format";
 
@@ -21,11 +22,9 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const USD_TO_CAD_RATE = 1.36;
-
-function toCad(price: number, currency: string | undefined) {
+function toCad(price: number, currency: string | undefined, rate: number) {
   return String(currency ?? "").toUpperCase() === "USD"
-    ? Math.round(price * USD_TO_CAD_RATE)
+    ? Math.round(price * rate)
     : Math.round(price);
 }
 
@@ -54,6 +53,7 @@ type CarListItemProps = {
 export function CarListItem({ car, onPress, index = 0 }: CarListItemProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const usdToCadRate = useExchangeRate();
   const [expanded, setExpanded] = useState(false);
 
   const mileage =
@@ -163,7 +163,7 @@ export function CarListItem({ car, onPress, index = 0 }: CarListItemProps) {
                       <View key={`${listing.title}-${i}`} style={styles.compItem}>
                         <Text style={styles.summary}>
                           {listing.source}: {listing.title} —{" "}
-                          {formatCurrency(toCad(listing.price, listing.currency))}
+                          {formatCurrency(toCad(listing.price, listing.currency, usdToCadRate))}
                         </Text>
                         {listing.url?.trim() ? (
                           <Text
