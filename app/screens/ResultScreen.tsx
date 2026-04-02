@@ -28,6 +28,8 @@ import type { RootStackParamList } from "../types";
 import { formatCurrency, formatPercent } from "../utils/format";
 
 type ResultScreenProps = NativeStackScreenProps<RootStackParamList, "Result">;
+const CONFIDENCE_HELP_TEXT =
+  "Confidence is based on photo quality and coverage, consistency of detected vehicle details, and how many reliable market listings were matched.";
 type ValuationPdfPayload = {
   carTitle: string;
   mileageLabel: string;
@@ -200,6 +202,7 @@ export function ResultScreen({ navigation, route }: ResultScreenProps) {
   const [isSharingPdf, setIsSharingPdf] = useState(false);
   const [isGalleryVisible, setIsGalleryVisible] = useState(false);
   const [galleryStartIndex, setGalleryStartIndex] = useState(0);
+  const [showConfidenceHelp, setShowConfidenceHelp] = useState(false);
   const scrollViewRef = useRef<ScrollView | null>(null);
   const exportContentRef = useRef<View | null>(null);
   const priceAnim = useRef(new Animated.Value(0)).current;
@@ -326,7 +329,18 @@ export function ResultScreen({ navigation, route }: ResultScreenProps) {
               <Text style={styles.range}>{formatCurrency(lowValue)} – {formatCurrency(highValue)}</Text>
             ) : null}
             <Text style={styles.meta}>All monetary values shown in CAD</Text>
-            <Text style={styles.confidence}>Confidence: {formatPercent(confidence)}</Text>
+            <View style={styles.confidenceRow}>
+              <Text style={styles.confidence}>Confidence: {formatPercent(confidence)}</Text>
+              <Pressable
+                onPress={() => setShowConfidenceHelp((prev) => !prev)}
+                style={({ pressed }) => [styles.infoButton, pressed && styles.infoButtonPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Explain confidence score"
+              >
+                <Text style={styles.infoButtonText}>?</Text>
+              </Pressable>
+            </View>
+            {showConfidenceHelp ? <Text style={styles.confidenceHelp}>{CONFIDENCE_HELP_TEXT}</Text> : null}
           </View>
 
           {details ? (
@@ -512,6 +526,34 @@ function createStyles(colors: AppColors) {
       fontSize: 14,
       color: colors.textMuted,
       fontWeight: "600"
+    },
+    confidenceRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8
+    },
+    infoButton: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: colors.borderStrong,
+      backgroundColor: colors.surfaceMuted
+    },
+    infoButtonPressed: {
+      opacity: 0.75
+    },
+    infoButtonText: {
+      fontSize: 12,
+      fontWeight: "800",
+      color: colors.textMuted
+    },
+    confidenceHelp: {
+      fontSize: 13,
+      lineHeight: 19,
+      color: colors.textSubtle
     },
     meta: {
       fontSize: 14,

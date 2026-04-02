@@ -50,11 +50,15 @@ type CarListItemProps = {
   index?: number;
 };
 
+const CONFIDENCE_HELP_TEXT =
+  "Confidence reflects photo quality and coverage, vehicle detail consistency, and how many reliable market comps were matched.";
+
 export function CarListItem({ car, onPress, index = 0 }: CarListItemProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const usdToCadRate = useExchangeRate();
   const [expanded, setExpanded] = useState(false);
+  const [showConfidenceHelp, setShowConfidenceHelp] = useState(false);
 
   const mileage =
     car.mileage_km !== null
@@ -93,12 +97,16 @@ export function CarListItem({ car, onPress, index = 0 }: CarListItemProps) {
 
   function toggleExpanded() {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    const nextExpanded = !expanded;
     Animated.timing(chevronAnim, {
-      toValue: expanded ? 0 : 1,
+      toValue: nextExpanded ? 1 : 0,
       duration: 220,
       useNativeDriver: true,
     }).start();
-    setExpanded((prev) => !prev);
+    setExpanded(nextExpanded);
+    if (!nextExpanded) {
+      setShowConfidenceHelp(false);
+    }
   }
 
   const chevronRotate = chevronAnim.interpolate({
@@ -129,7 +137,18 @@ export function CarListItem({ car, onPress, index = 0 }: CarListItemProps) {
         {expanded && (
           <View style={styles.expandedPanel}>
             <View style={styles.divider} />
-            <Text style={styles.confidence}>Confidence: {formatPercent(confidence)}</Text>
+            <View style={styles.confidenceRow}>
+              <Text style={styles.confidence}>Confidence: {formatPercent(confidence)}</Text>
+              <Pressable
+                onPress={() => setShowConfidenceHelp((prev) => !prev)}
+                style={({ pressed }) => [styles.infoButton, pressed && styles.infoButtonPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Explain confidence score"
+              >
+                <Text style={styles.infoButtonText}>?</Text>
+              </Pressable>
+            </View>
+            {showConfidenceHelp ? <Text style={styles.confidenceHelp}>{CONFIDENCE_HELP_TEXT}</Text> : null}
             {lowValue > 0 && highValue > 0 ? (
               <Text style={styles.range}>{formatCurrency(lowValue)} – {formatCurrency(highValue)}</Text>
             ) : null}
@@ -257,6 +276,34 @@ function createStyles(colors: AppColors) {
       fontSize: 13,
       color: colors.textMuted,
       fontWeight: "600",
+    },
+    confidenceRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    infoButton: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: colors.borderStrong,
+      backgroundColor: colors.surfaceMuted,
+    },
+    infoButtonPressed: {
+      opacity: 0.75,
+    },
+    infoButtonText: {
+      fontSize: 11,
+      fontWeight: "800",
+      color: colors.textMuted,
+    },
+    confidenceHelp: {
+      fontSize: 12,
+      lineHeight: 18,
+      color: colors.textSubtle,
     },
     range: {
       fontSize: 13,
