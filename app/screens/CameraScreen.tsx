@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -15,6 +15,8 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { LoadingOverlay } from "../components/LoadingOverlay";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { TextField } from "../components/TextField";
+import { useDraftScan } from "../hooks/useDraftScan";
+import type { DraftCapturedShot } from "../hooks/useDraftScan";
 import { analyzeCarImages, verifyCarPhoto } from "../services/api";
 import { saveCarAnalysis } from "../services/carService";
 import { supabase } from "../services/supabase";
@@ -92,6 +94,8 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
   const [selectedStepId, setSelectedStepId] = useState<PhotoView | null>(null);
   const [isAnalysing, setIsAnalysing] = useState(false);
   const isCancelledRef = useRef(false);
+  const draftResolved = useRef(false);
+  const { draftLoaded, draft, saveDraft, clearDraft } = useDraftScan();
 
   const parsedYear = Number(vehicleYear.trim());
   const parsedMileage = Number(vehicleMileageKm.replace(/[^\d]/g, ""));
@@ -109,6 +113,79 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
   const activeStepId = selectedStepId ?? pickFirstIncomplete(capturedShots);
   const activeStep = REQUIRED_STEPS.find((step) => step.id === activeStepId) ?? REQUIRED_STEPS[0];
   const activeShot = capturedShots[activeStep.id];
+
+  // Offer to resume a saved draft once AsyncStorage has been read.
+  useEffect(() => {
+    if (!draftLoaded) return;
+
+    const photoCount = Object.keys(draft?.capturedShots ?? {}).length;
+    const hasContent =
+      draft !== null &&
+      (draft.vehicleYear.trim() ||
+        draft.vehicleMake.trim() ||
+        draft.vehicleModel.trim() ||
+        draft.vehicleMileageKm.trim() ||
+        photoCount > 0);
+
+    if (!hasContent) {
+      draftResolved.current = true;
+      return;
+    }
+
+    const vehicleLabel = [draft!.vehicleYear, draft!.vehicleMake, draft!.vehicleModel]
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join(" ");
+    const body = vehicleLabel
+      ? `${vehicleLabel} — ${photoCount} of ${REQUIRED_STEPS.length} photos captured.`
+      : `${photoCount} of ${REQUIRED_STEPS.length} photos captured.`;
+
+    Alert.alert("Resume previous scan?", body, [
+      {
+        text: "Start Fresh",
+        style: "cancel",
+        onPress: () => {
+          clearDraft();
+          draftResolved.current = true;
+        }
+      },
+      {
+        text: "Resume",
+        onPress: () => {
+          setVehicleYear(draft!.vehicleYear);
+          setVehicleMake(draft!.vehicleMake);
+          setVehicleModel(draft!.vehicleModel);
+          setVehicleMileageKm(draft!.vehicleMileageKm);
+          setUserProvidedDetails(draft!.userProvidedDetails);
+          const restoredShots: Partial<Record<PhotoView, CapturedShot>> = {};
+          for (const [key, draftShot] of Object.entries(draft!.capturedShots) as [PhotoView, DraftCapturedShot][]) {
+            restoredShots[key] = {
+              localUri: draftShot.publicUrl,
+              publicUrl: draftShot.publicUrl,
+              analysisUrl: draftShot.analysisUrl,
+              verificationConfidence: draftShot.verificationConfidence
+            };
+          }
+          setCapturedShots(restoredShots);
+          draftResolved.current = true;
+        }
+      }
+    ]);
+  }, [draftLoaded, draft, clearDraft]);
+
+  // Auto-save draft whenever form or photos change.
+  useEffect(() => {
+    if (!draftResolved.current) return;
+    const draftShots: Partial<Record<PhotoView, DraftCapturedShot>> = {};
+    for (const [key, shot] of Object.entries(capturedShots) as [PhotoView, CapturedShot][]) {
+      draftShots[key] = {
+        publicUrl: shot.publicUrl,
+        analysisUrl: shot.analysisUrl,
+        verificationConfidence: shot.verificationConfidence
+      };
+    }
+    saveDraft({ vehicleYear, vehicleMake, vehicleModel, vehicleMileageKm, userProvidedDetails, capturedShots: draftShots });
+  }, [vehicleYear, vehicleMake, vehicleModel, vehicleMileageKm, userProvidedDetails, capturedShots, saveDraft]);
 
   function getKnownVehicle() {
     if (!isVehicleInfoValid) {
@@ -342,6 +419,7 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
         carId: savedCar.id,
         estimatedValue
       });
+      clearDraft();
       navigation.replace("Result", { car: savedCar });
     } catch (error: any) {
       if (!isCancelledRef.current) {
