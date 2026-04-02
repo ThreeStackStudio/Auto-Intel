@@ -280,6 +280,7 @@ function inferSourceFromUrl(url: string) {
   const normalized = url.toLowerCase();
   if (normalized.includes("autotrader")) return "AutoTrader";
   if (normalized.includes("facebook.com/marketplace")) return "Facebook Marketplace";
+  if (normalized.includes("kijijiautos.ca") || normalized.includes("kijiji.ca")) return "Kijiji Autos";
   return "Marketplace";
 }
 
@@ -347,7 +348,9 @@ async function fetchMarketListings(knownVehicle: KnownVehicle): Promise<MarketLi
     `site:autotrader.ca ${base} ${mileageText} canada`,
     `site:autotrader.ca ${base} canada`,
     `site:facebook.com/marketplace ${base} ${mileageText} canada`,
-    `site:facebook.com/marketplace ${base} canada`
+    `site:facebook.com/marketplace ${base} canada`,
+    `site:kijijiautos.ca ${base} ${mileageText} canada`,
+    `site:kijijiautos.ca ${base} canada`
   ];
 
   const listingGroups = await Promise.all(
@@ -700,7 +703,7 @@ async function handleAnalyzeVehicle(input: Record<string, unknown>) {
               `${index + 1}. ${listing.source} | ${listing.title} | ${listing.currency} ${listing.price} | ${listing.url}`
           )
           .join("\n")
-      : "No direct listings found from AutoTrader/Facebook Marketplace search results.";
+      : "No direct listings found from AutoTrader/Facebook Marketplace/Kijiji Autos search results.";
 
   const prompt = `You are an expert automotive appraiser.
 
@@ -713,7 +716,7 @@ Vehicle details provided by user (authoritative):
 Additional user-provided details beyond photos:
 ${userProvidedDetails || "None provided."}
 
-You are given labeled vehicle photos and scraped market listing comps from AutoTrader and Facebook Marketplace.
+You are given labeled vehicle photos and scraped market listing comps from AutoTrader, Facebook Marketplace, and Kijiji Autos.
 All listing prices below are normalized to CAD.
 Use visible evidence plus the user-provided details for condition and modifications.
 If user-provided details describe maintenance, repairs, or upgrades, include them in detected_mods when relevant.
