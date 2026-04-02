@@ -28,6 +28,13 @@ function toCad(price: number, currency: string | undefined, rate: number) {
     : Math.round(price);
 }
 
+function formatImpactPercent(value: number) {
+  const rounded = Math.round(value * 10) / 10;
+  const absolute = Math.abs(rounded);
+  const amount = Number.isInteger(absolute) ? absolute.toFixed(0) : absolute.toFixed(1);
+  return `${rounded >= 0 ? "+" : "-"}${amount}%`;
+}
+
 async function openUrl(url: string) {
   const trimmed = url.trim();
   if (!trimmed) return;
@@ -172,10 +179,27 @@ export function CarListItem({ car, onPress, index = 0 }: CarListItemProps) {
                   <>
                     <Text style={styles.sectionLabel}>Detected Mods</Text>
                     {mods.slice(0, 3).map((mod, i) => (
-                      <Text key={`${mod.name}-${i}`} style={styles.summary}>
-                        {mod.name}: {mod.impactPercent >= 0 ? "+" : ""}
-                        {mod.impactPercent}%{mod.notes ? ` (${mod.notes})` : ""}
-                      </Text>
+                      <View key={`${mod.name}-${i}`} style={styles.modRow}>
+                        <View style={styles.modHeaderRow}>
+                          <Text style={styles.modName}>{mod.name}</Text>
+                          <View
+                            style={[
+                              styles.modImpactPill,
+                              mod.impactPercent >= 0 ? styles.modImpactPillPositive : styles.modImpactPillNegative
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.modImpactText,
+                                mod.impactPercent >= 0 ? styles.modImpactTextPositive : styles.modImpactTextNegative
+                              ]}
+                            >
+                              {formatImpactPercent(mod.impactPercent)}
+                            </Text>
+                          </View>
+                        </View>
+                        {mod.notes ? <Text style={styles.modNotes}>{mod.notes}</Text> : null}
+                      </View>
                     ))}
                   </>
                 )}
@@ -322,6 +346,54 @@ function createStyles(colors: AppColors) {
       fontSize: 14,
       lineHeight: 20,
       color: colors.textMuted,
+    },
+    modRow: {
+      gap: 3,
+    },
+    modHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+    },
+    modName: {
+      flex: 1,
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.textMuted,
+      fontWeight: "600",
+    },
+    modImpactPill: {
+      minWidth: 60,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 999,
+      borderWidth: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    modImpactPillPositive: {
+      backgroundColor: colors.stepDoneBackground,
+      borderColor: colors.stepDoneBorder,
+    },
+    modImpactPillNegative: {
+      backgroundColor: colors.surfaceMuted,
+      borderColor: colors.danger,
+    },
+    modImpactText: {
+      fontSize: 11,
+      fontWeight: "800",
+    },
+    modImpactTextPositive: {
+      color: colors.success,
+    },
+    modImpactTextNegative: {
+      color: colors.danger,
+    },
+    modNotes: {
+      fontSize: 12,
+      lineHeight: 18,
+      color: colors.textSubtle,
     },
     compItem: {
       gap: 2,
