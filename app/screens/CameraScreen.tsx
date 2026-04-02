@@ -19,6 +19,7 @@ import { analyzeCarImages, verifyCarPhoto } from "../services/api";
 import { saveCarAnalysis } from "../services/carService";
 import { supabase } from "../services/supabase";
 import { uploadCarImage } from "../services/storage";
+import { useAppTheme, type AppColors } from "../theme";
 import type { PhotoView, RootStackParamList } from "../types";
 import { logError, logInfo, logWarn } from "../utils/logger";
 import { calculateEstimatedValue, estimateBasePrice } from "../utils/valuation";
@@ -79,6 +80,8 @@ function pickFirstIncomplete(captured: Partial<Record<PhotoView, CapturedShot>>)
 }
 
 export function CameraScreen({ navigation }: CameraScreenProps) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [vehicleYear, setVehicleYear] = useState("");
   const [vehicleMake, setVehicleMake] = useState("");
   const [vehicleModel, setVehicleModel] = useState("");
@@ -432,7 +435,7 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
                   </Text>
                   <Text style={styles.stepStatus}>
                     {shot
-                      ? `Verified (${Math.round(shot.verificationConfidence * 100)}%) — tap to retake`
+                      ? `Verified (${Math.round(shot.verificationConfidence * 100)}%) - tap to retake`
                       : "Waiting for photo"}
                   </Text>
                 </View>
@@ -467,113 +470,115 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#EEF4FA"
-  },
-  content: {
-    paddingHorizontal: 16,
-    paddingBottom: 28,
-    gap: 14
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "900",
-    color: "#0A1728"
-  },
-  subtitle: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: "#35516D"
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#0A1728"
-  },
-  formGroup: {
-    gap: 10
-  },
-  fieldHint: {
-    fontSize: 12,
-    color: "#4A6886",
-    lineHeight: 18
-  },
-  stepsList: {
-    gap: 8
-  },
-  stepCard: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 10,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10
-  },
-  stepPending: {
-    borderColor: "#C8D5E5",
-    backgroundColor: "#FFFFFF"
-  },
-  stepDone: {
-    borderColor: "#91C8A5",
-    backgroundColor: "#EAF8EE"
-  },
-  stepActive: {
-    borderColor: "#0E4F8A",
-    borderWidth: 2
-  },
-  stepPressed: {
-    opacity: 0.75
-  },
-  stepTextWrap: {
-    flex: 1,
-    gap: 4
-  },
-  stepLabel: {
-    fontSize: 15,
-    color: "#0A1728",
-    fontWeight: "700"
-  },
-  stepStatus: {
-    fontSize: 13,
-    color: "#35516D",
-    fontWeight: "500"
-  },
-  stepThumb: {
-    width: 56,
-    height: 56,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#B8C8DA"
-  },
-  activePanel: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#D8E2EF",
-    padding: 12,
-    gap: 10
-  },
-  activeTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#0A1728"
-  },
-  activeHint: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: "#35516D"
-  },
-  activePreview: {
-    width: "100%",
-    height: 180,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#CCD9E8"
-  },
-  buttonGroup: {
-    gap: 10
-  }
-});
+function createStyles(colors: AppColors) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background
+    },
+    content: {
+      paddingHorizontal: 16,
+      paddingBottom: 28,
+      gap: 14
+    },
+    title: {
+      fontSize: 28,
+      fontWeight: "900",
+      color: colors.text
+    },
+    subtitle: {
+      fontSize: 15,
+      lineHeight: 22,
+      color: colors.textMuted
+    },
+    sectionTitle: {
+      fontSize: 16,
+      fontWeight: "800",
+      color: colors.text
+    },
+    formGroup: {
+      gap: 10
+    },
+    fieldHint: {
+      fontSize: 12,
+      color: colors.textSubtle,
+      lineHeight: 18
+    },
+    stepsList: {
+      gap: 8
+    },
+    stepCard: {
+      borderRadius: 12,
+      borderWidth: 1,
+      padding: 10,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 10
+    },
+    stepPending: {
+      borderColor: colors.stepPendingBorder,
+      backgroundColor: colors.stepPendingBackground
+    },
+    stepDone: {
+      borderColor: colors.stepDoneBorder,
+      backgroundColor: colors.stepDoneBackground
+    },
+    stepActive: {
+      borderColor: colors.stepActiveBorder,
+      borderWidth: 2
+    },
+    stepPressed: {
+      opacity: 0.75
+    },
+    stepTextWrap: {
+      flex: 1,
+      gap: 4
+    },
+    stepLabel: {
+      fontSize: 15,
+      color: colors.text,
+      fontWeight: "700"
+    },
+    stepStatus: {
+      fontSize: 13,
+      color: colors.textMuted,
+      fontWeight: "500"
+    },
+    stepThumb: {
+      width: 56,
+      height: 56,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.borderStrong
+    },
+    activePanel: {
+      backgroundColor: colors.surface,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 12,
+      gap: 10
+    },
+    activeTitle: {
+      fontSize: 16,
+      fontWeight: "800",
+      color: colors.text
+    },
+    activeHint: {
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.textMuted
+    },
+    activePreview: {
+      width: "100%",
+      height: 180,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border
+    },
+    buttonGroup: {
+      gap: 10
+    }
+  });
+}

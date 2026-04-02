@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -14,16 +14,21 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { CarListItem } from "../components/CarListItem";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SkeletonCard } from "../components/SkeletonCard";
-import { fetchUserCars } from "../services/carService";
+import { SwipeToDeleteRow } from "../components/SwipeToDeleteRow";
+import { deleteCarAnalysis, fetchUserCars } from "../services/carService";
 import { supabase } from "../services/supabase";
+import { useAppTheme, type AppColors } from "../theme";
 import type { CarWithRelations, RootStackParamList } from "../types";
 
 type HomeScreenProps = NativeStackScreenProps<RootStackParamList, "Home">;
 
 export function HomeScreen({ navigation }: HomeScreenProps) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [history, setHistory] = useState<CarWithRelations[]>([]);
   const [loading, setLoading] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
@@ -51,6 +56,35 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     }
   }
 
+  function promptDeleteAnalysis(car: CarWithRelations) {
+    Alert.alert(
+      "Delete analysis?",
+      `${car.year} ${car.make} ${car.model} will be permanently removed from your history.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void handleDeleteAnalysis(car.id);
+          }
+        }
+      ]
+    );
+  }
+
+  async function handleDeleteAnalysis(carId: string) {
+    setDeletingId(carId);
+    try {
+      await deleteCarAnalysis(carId);
+      setHistory((prev) => prev.filter((car) => car.id !== carId));
+    } catch (error: any) {
+      Alert.alert("Delete failed", error?.message ?? "Could not delete this analysis.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
@@ -70,7 +104,9 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
             data={history}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
-            refreshControl={<RefreshControl refreshing={loading} onRefresh={loadHistory} />}
+            refreshControl={
+              <RefreshControl refreshing={loading} onRefresh={loadHistory} tintColor={colors.primary} colors={[colors.primary]} />
+            }
             ListEmptyComponent={
               <View style={styles.emptyState}>
                 <Text style={styles.emptyTitle}>No scans yet</Text>
@@ -78,7 +114,9 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
               </View>
             }
             renderItem={({ item, index }) => (
-              <CarListItem car={item} index={index} onPress={() => navigation.navigate("Result", { car: item })} />
+              <SwipeToDeleteRow onDelete={() => promptDeleteAnalysis(item)} disabled={Boolean(deletingId)}>
+                <CarListItem car={item} index={index} onPress={() => navigation.navigate("Result", { car: item })} />
+              </SwipeToDeleteRow>
             )}
           />
         )}
@@ -87,50 +125,52 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#EEF4FA"
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    gap: 12
-  },
-  title: {
-    fontSize: 30,
-    fontWeight: "900",
-    color: "#0A1728"
-  },
-  subtitle: {
-    fontSize: 15,
-    color: "#38536F",
-    marginBottom: 8
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#0A1728",
-    marginTop: 8
-  },
-  listContent: {
-    paddingBottom: 24,
-    gap: 10
-  },
-  emptyState: {
-    paddingVertical: 40,
-    alignItems: "center",
-    gap: 8
-  },
-  emptyTitle: {
-    fontSize: 18,
-    color: "#27415E",
-    fontWeight: "700"
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: "#5A718B"
-  }
-});
+function createStyles(colors: AppColors) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background
+    },
+    content: {
+      flex: 1,
+      paddingHorizontal: 16,
+      paddingTop: 8,
+      gap: 12
+    },
+    title: {
+      fontSize: 30,
+      fontWeight: "900",
+      color: colors.text
+    },
+    subtitle: {
+      fontSize: 15,
+      color: colors.textMuted,
+      marginBottom: 8
+    },
+    sectionTitle: {
+      fontSize: 18,
+      fontWeight: "800",
+      color: colors.text,
+      marginTop: 8
+    },
+    listContent: {
+      paddingBottom: 24,
+      gap: 10
+    },
+    emptyState: {
+      paddingVertical: 40,
+      alignItems: "center",
+      gap: 8
+    },
+    emptyTitle: {
+      fontSize: 18,
+      color: colors.textMuted,
+      fontWeight: "700"
+    },
+    emptySubtitle: {
+      fontSize: 14,
+      color: colors.textSubtle
+    }
+  });
+}
 

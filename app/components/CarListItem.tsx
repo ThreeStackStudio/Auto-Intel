@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { useAppTheme, type AppColors } from "../theme";
 import type { CarWithRelations } from "../types";
 import { formatCurrency, formatDate } from "../utils/format";
 
@@ -11,6 +12,8 @@ type CarListItemProps = {
 };
 
 export function CarListItem({ car, onPress, index = 0 }: CarListItemProps) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const mileage =
     car.mileage_km !== null
       ? `${new Intl.NumberFormat("en-US").format(car.mileage_km)} km`
@@ -53,38 +56,40 @@ export function CarListItem({ car, onPress, index = 0 }: CarListItemProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#DAE3EF",
-    gap: 8
-  },
-  pressed: {
-    opacity: 0.9
-  },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 12
-  },
-  title: {
-    flex: 1,
-    fontSize: 16,
-    color: "#0A1728",
-    fontWeight: "700"
-  },
-  value: {
-    fontSize: 16,
-    color: "#0B5D1E",
-    fontWeight: "800"
-  },
-  meta: {
-    fontSize: 13,
-    color: "#496582",
-    fontWeight: "500"
-  }
-});
+function createStyles(colors: AppColors) {
+  return StyleSheet.create({
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: 14,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      gap: 8
+    },
+    pressed: {
+      opacity: 0.9
+    },
+    headerRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: 12
+    },
+    title: {
+      flex: 1,
+      fontSize: 16,
+      color: colors.text,
+      fontWeight: "700"
+    },
+    value: {
+      fontSize: 16,
+      color: colors.success,
+      fontWeight: "800"
+    },
+    meta: {
+      fontSize: 13,
+      color: colors.textMuted,
+      fontWeight: "500"
+    }
+  });
+}

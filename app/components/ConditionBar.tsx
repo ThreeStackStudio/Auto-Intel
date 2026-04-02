@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Animated, Easing, StyleSheet, Text, View } from "react-native";
 
+import { useAppTheme, type AppColors } from "../theme";
 import { formatPercent } from "../utils/format";
 
 type ConditionBarProps = {
@@ -18,6 +19,8 @@ function clamp01(value: number | string | null | undefined) {
 }
 
 export function ConditionBar({ label, value, inverse = false }: ConditionBarProps) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const normalized = clamp01(value);
   const visualValue = inverse ? 1 - normalized : normalized;
   const animWidth = useRef(new Animated.Value(0)).current;
@@ -49,34 +52,36 @@ export function ConditionBar({ label, value, inverse = false }: ConditionBarProp
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    gap: 8
-  },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center"
-  },
-  label: {
-    fontSize: 14,
-    color: "#0A1728",
-    fontWeight: "600"
-  },
-  value: {
-    fontSize: 13,
-    color: "#2A4D74",
-    fontWeight: "600"
-  },
-  track: {
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: "#D6E1ED",
-    overflow: "hidden"
-  },
-  fill: {
-    height: "100%",
-    borderRadius: 999,
-    backgroundColor: "#0E4F8A"
-  }
-});
+function createStyles(colors: AppColors) {
+  return StyleSheet.create({
+    container: {
+      gap: 8
+    },
+    row: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center"
+    },
+    label: {
+      fontSize: 14,
+      color: colors.text,
+      fontWeight: "600"
+    },
+    value: {
+      fontSize: 13,
+      color: colors.textMuted,
+      fontWeight: "600"
+    },
+    track: {
+      height: 10,
+      borderRadius: 999,
+      backgroundColor: colors.conditionTrack,
+      overflow: "hidden"
+    },
+    fill: {
+      height: "100%",
+      borderRadius: 999,
+      backgroundColor: colors.conditionFill
+    }
+  });
+}

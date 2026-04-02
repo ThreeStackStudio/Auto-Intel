@@ -191,3 +191,16 @@ export async function saveCarAnalysis(args: SaveCarAnalysisArgs): Promise<CarWit
     throw error;
   }
 }
+
+export async function deleteCarAnalysis(carId: string): Promise<void> {
+  const trimmedId = carId.trim();
+  if (!trimmedId) {
+    throw new Error("Missing car id.");
+  }
+
+  const { error } = await supabase.from("cars").delete().eq("id", trimmedId);
+
+  if (error) {
+    throw new Error(`Failed to delete analysis: ${error.message}`);
+  }
+}

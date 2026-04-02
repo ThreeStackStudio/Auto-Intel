@@ -1,7 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Animated, StyleSheet, View } from "react-native";
 
+import { useAppTheme, type AppColors } from "../theme";
+
 export function SkeletonCard() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const shimmer = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -27,43 +31,45 @@ export function SkeletonCard() {
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#DAE3EF",
-    gap: 10,
-  },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-  },
-  titleBar: {
-    flex: 1,
-    height: 16,
-    borderRadius: 6,
-    backgroundColor: "#C5D5E8",
-  },
-  valueBar: {
-    width: 72,
-    height: 16,
-    borderRadius: 6,
-    backgroundColor: "#B8CCDE",
-  },
-  metaBarWide: {
-    width: "55%",
-    height: 12,
-    borderRadius: 5,
-    backgroundColor: "#D4E3EF",
-  },
-  metaBarNarrow: {
-    width: "35%",
-    height: 12,
-    borderRadius: 5,
-    backgroundColor: "#D4E3EF",
-  },
-});
+function createStyles(colors: AppColors) {
+  return StyleSheet.create({
+    card: {
+      backgroundColor: colors.skeletonCard,
+      borderRadius: 14,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      gap: 10
+    },
+    headerRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 12
+    },
+    titleBar: {
+      flex: 1,
+      height: 16,
+      borderRadius: 6,
+      backgroundColor: colors.skeletonBarStrong
+    },
+    valueBar: {
+      width: 72,
+      height: 16,
+      borderRadius: 6,
+      backgroundColor: colors.skeletonBar
+    },
+    metaBarWide: {
+      width: "55%",
+      height: 12,
+      borderRadius: 5,
+      backgroundColor: colors.skeletonBarLight
+    },
+    metaBarNarrow: {
+      width: "35%",
+      height: 12,
+      borderRadius: 5,
+      backgroundColor: colors.skeletonBarLight
+    }
+  });
+}

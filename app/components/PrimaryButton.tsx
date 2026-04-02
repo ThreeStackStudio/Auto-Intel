@@ -1,4 +1,7 @@
+import { useMemo } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text } from "react-native";
+
+import { useAppTheme, type AppColors } from "../theme";
 
 type PrimaryButtonProps = {
   title: string;
@@ -15,6 +18,8 @@ export function PrimaryButton({
   loading = false,
   variant = "primary"
 }: PrimaryButtonProps) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const isDisabled = disabled || loading;
   const secondary = variant === "secondary";
 
@@ -30,7 +35,7 @@ export function PrimaryButton({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={secondary ? "#0A1728" : "#FFFFFF"} />
+        <ActivityIndicator color={secondary ? colors.onSecondarySurface : colors.onPrimary} />
       ) : (
         <Text style={[styles.buttonText, secondary ? styles.secondaryText : styles.primaryText]}>
           {title}
@@ -40,35 +45,38 @@ export function PrimaryButton({
   );
 }
 
-const styles = StyleSheet.create({
-  button: {
-    borderRadius: 12,
-    minHeight: 50,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 20
-  },
-  primaryButton: {
-    backgroundColor: "#0A1728"
-  },
-  secondaryButton: {
-    backgroundColor: "#D8E8FF"
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: "700"
-  },
-  primaryText: {
-    color: "#FFFFFF"
-  },
-  secondaryText: {
-    color: "#0A1728"
-  },
-  disabledButton: {
-    opacity: 0.6
-  },
-  pressed: {
-    transform: [{ scale: 0.99 }]
-  }
-});
-
+function createStyles(colors: AppColors) {
+  return StyleSheet.create({
+    button: {
+      borderRadius: 12,
+      minHeight: 50,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 20
+    },
+    primaryButton: {
+      backgroundColor: colors.primary
+    },
+    secondaryButton: {
+      backgroundColor: colors.secondarySurface,
+      borderWidth: 1,
+      borderColor: colors.border
+    },
+    buttonText: {
+      fontSize: 16,
+      fontWeight: "700"
+    },
+    primaryText: {
+      color: colors.onPrimary
+    },
+    secondaryText: {
+      color: colors.onSecondarySurface
+    },
+    disabledButton: {
+      opacity: 0.6
+    },
+    pressed: {
+      transform: [{ scale: 0.99 }]
+    }
+  });
+}

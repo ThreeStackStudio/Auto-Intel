@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -13,11 +13,14 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { TextField } from "../components/TextField";
 import { supabase } from "../services/supabase";
+import { useAppTheme, type AppColors } from "../theme";
 import type { RootStackParamList } from "../types";
 
 type AuthScreenProps = NativeStackScreenProps<RootStackParamList, "Auth">;
 
 export function AuthScreen(_props: AuthScreenProps) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [isSignUpMode, setIsSignUpMode] = useState(true);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -165,30 +168,32 @@ export function AuthScreen(_props: AuthScreenProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  keyboardContainer: {
-    flex: 1,
-    backgroundColor: "#EEF4FA"
-  },
-  scrollContent: {
-    flexGrow: 1
-  },
-  content: {
-    flex: 1,
-    paddingTop: 72,
-    paddingHorizontal: 20,
-    paddingBottom: 28,
-    gap: 14
-  },
-  title: {
-    fontSize: 36,
-    fontWeight: "900",
-    color: "#0A1728"
-  },
-  subtitle: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: "#334D68",
-    marginBottom: 8
-  }
-});
+function createStyles(colors: AppColors) {
+  return StyleSheet.create({
+    keyboardContainer: {
+      flex: 1,
+      backgroundColor: colors.background
+    },
+    scrollContent: {
+      flexGrow: 1
+    },
+    content: {
+      flex: 1,
+      paddingTop: 72,
+      paddingHorizontal: 20,
+      paddingBottom: 28,
+      gap: 14
+    },
+    title: {
+      fontSize: 36,
+      fontWeight: "900",
+      color: colors.text
+    },
+    subtitle: {
+      fontSize: 15,
+      lineHeight: 22,
+      color: colors.textMuted,
+      marginBottom: 8
+    }
+  });
+}
