@@ -22,3 +22,8 @@ export function formatPercent(value: number) {
   }
   return `${Math.round(numeric * 100)}%`;
 }
+
+export function formatShortDate(dateString: string): string {
+  const date = new Date(dateString);
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(date);
+}

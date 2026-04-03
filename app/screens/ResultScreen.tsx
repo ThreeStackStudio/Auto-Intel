@@ -24,7 +24,9 @@ import { ConditionBar } from "../components/ConditionBar";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { useAppTheme, type AppColors } from "../theme";
 import { useExchangeRate } from "../hooks/useExchangeRate";
-import type { RootStackParamList } from "../types";
+import type { CarRow, RootStackParamList } from "../types";
+import { ValuationHistoryChart } from "../components/ValuationHistoryChart";
+import { fetchValuationHistory } from "../services/carService";
 import { formatCurrency, formatPercent } from "../utils/format";
 
 type ResultScreenProps = NativeStackScreenProps<RootStackParamList, "Result">;
@@ -210,6 +212,17 @@ export function ResultScreen({ navigation, route }: ResultScreenProps) {
   const [isGalleryVisible, setIsGalleryVisible] = useState(false);
   const [galleryStartIndex, setGalleryStartIndex] = useState(0);
   const [showConfidenceHelp, setShowConfidenceHelp] = useState(false);
+  const [valuationHistory, setValuationHistory] = useState<
+    Pick<CarRow, "id" | "estimated_value" | "created_at">[]
+  >([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+
+  useEffect(() => {
+    fetchValuationHistory(car.make, car.model, car.year)
+      .then(setValuationHistory)
+      .finally(() => setHistoryLoading(false));
+  }, []);
+
   const scrollViewRef = useRef<ScrollView | null>(null);
   const exportContentRef = useRef<View | null>(null);
   const priceAnim = useRef(new Animated.Value(0)).current;
@@ -349,6 +362,24 @@ export function ResultScreen({ navigation, route }: ResultScreenProps) {
             </View>
             {showConfidenceHelp ? <Text style={styles.confidenceHelp}>{CONFIDENCE_HELP_TEXT}</Text> : null}
           </View>
+
+          {(historyLoading || valuationHistory.length >= 2) && (
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Valuation History</Text>
+              {historyLoading ? (
+                <Text style={styles.summary}>Loading history…</Text>
+              ) : (
+                <ValuationHistoryChart
+                  data={valuationHistory.map((h) => ({
+                    id: h.id,
+                    value: h.estimated_value,
+                    date: h.created_at,
+                  }))}
+                  currentCarId={car.id}
+                />
+              )}
+            </View>
+          )}
 
           {details ? (
             <View style={styles.card}>

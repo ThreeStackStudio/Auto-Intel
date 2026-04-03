@@ -1,4 +1,4 @@
-import type { AnalysisResult, CarWithRelations } from "../types";
+import type { AnalysisResult, CarRow, CarWithRelations } from "../types";
 import { supabase } from "./supabase";
 import { logWarn } from "../utils/logger";
 
@@ -397,4 +397,25 @@ export async function deleteCarAnalysis(carId: string): Promise<void> {
   if (error) {
     throw new Error(`Failed to delete analysis: ${error.message}`);
   }
+}
+
+export async function fetchValuationHistory(
+  make: string,
+  model: string,
+  year: number
+): Promise<Pick<CarRow, "id" | "estimated_value" | "created_at">[]> {
+  const { data, error } = await supabase
+    .from("cars")
+    .select("id, estimated_value, created_at")
+    .ilike("make", make)
+    .ilike("model", model)
+    .eq("year", year)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    logWarn("CarService", "Failed to fetch valuation history.", { make, model, year, error: error.message });
+    return [];
+  }
+
+  return (data ?? []) as Pick<CarRow, "id" | "estimated_value" | "created_at">[];
 }
