@@ -1,10 +1,11 @@
-import { type ReactNode, useMemo, useRef } from "react";
+import { type ReactNode, useEffect, useMemo, useRef } from "react";
 import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useAppTheme, type AppColors } from "../theme";
 
 const ACTION_WIDTH = 96;
-const SWIPE_THRESHOLD = 44;
+const SWIPE_OPEN_THRESHOLD = 42;
+const SWIPE_ACTIVATION_DISTANCE = 18;
 
 type SwipeToDeleteRowProps = {
   children: ReactNode;
@@ -22,6 +23,11 @@ export function SwipeToDeleteRow({ children, onDelete, disabled = false }: Swipe
   const translateX = useRef(new Animated.Value(0)).current;
   const startX = useRef(0);
   const isOpen = useRef(false);
+  const deleteRevealOpacity = translateX.interpolate({
+    inputRange: [-ACTION_WIDTH, -20, 0],
+    outputRange: [1, 0.25, 0],
+    extrapolate: "clamp"
+  });
 
   function animateTo(target: number) {
     Animated.spring(translateX, {
@@ -34,11 +40,21 @@ export function SwipeToDeleteRow({ children, onDelete, disabled = false }: Swipe
     });
   }
 
+  useEffect(() => {
+    if (disabled) {
+      animateTo(0);
+    }
+  }, [disabled]);
+
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_evt, gestureState) => {
         if (disabled) return false;
-        return Math.abs(gestureState.dx) > 12 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+        const mostlyHorizontal = Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.35;
+        const lowVerticalNoise = Math.abs(gestureState.dy) < 18;
+        const leftSwipeToOpen = gestureState.dx < -SWIPE_ACTIVATION_DISTANCE;
+        const rightSwipeToClose = isOpen.current && gestureState.dx > 8;
+        return (leftSwipeToOpen || rightSwipeToClose) && mostlyHorizontal && lowVerticalNoise;
       },
       onPanResponderGrant: () => {
         translateX.stopAnimation((value) => {
@@ -55,9 +71,9 @@ export function SwipeToDeleteRow({ children, onDelete, disabled = false }: Swipe
           return;
         }
 
-        const movingLeft = gestureState.dx < -SWIPE_THRESHOLD;
-        const keepOpen = isOpen.current && gestureState.dx < SWIPE_THRESHOLD;
-        animateTo(movingLeft || keepOpen ? -ACTION_WIDTH : 0);
+        const finalX = clamp(startX.current + gestureState.dx, -ACTION_WIDTH, 0);
+        const shouldOpen = finalX <= -SWIPE_OPEN_THRESHOLD || gestureState.vx < -0.35;
+        animateTo(shouldOpen ? -ACTION_WIDTH : 0);
       },
       onPanResponderTerminate: () => {
         animateTo(isOpen.current ? -ACTION_WIDTH : 0);
@@ -73,14 +89,16 @@ export function SwipeToDeleteRow({ children, onDelete, disabled = false }: Swipe
   return (
     <View style={styles.container}>
       <View style={styles.actionRail}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Delete analysis"
-          onPress={handleDeletePress}
-          style={({ pressed }) => [styles.deleteButton, pressed && styles.deletePressed]}
-        >
-          <Text style={styles.deleteText}>Delete</Text>
-        </Pressable>
+        <Animated.View style={[styles.deleteButtonWrap, { opacity: deleteRevealOpacity }]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Delete analysis"
+            onPress={handleDeletePress}
+            style={({ pressed }) => [styles.deleteButton, pressed && styles.deletePressed]}
+          >
+            <Text style={styles.deleteText}>Delete</Text>
+          </Pressable>
+        </Animated.View>
       </View>
 
       <Animated.View style={[styles.foreground, { transform: [{ translateX }] }]} {...panResponder.panHandlers}>
@@ -102,11 +120,14 @@ function createStyles(colors: AppColors) {
       justifyContent: "center"
     },
     deleteButton: {
-      width: ACTION_WIDTH,
       flex: 1,
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: colors.danger
+    },
+    deleteButtonWrap: {
+      width: ACTION_WIDTH,
+      flex: 1
     },
     deletePressed: {
       opacity: 0.85

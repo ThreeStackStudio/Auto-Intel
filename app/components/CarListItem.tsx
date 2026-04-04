@@ -55,12 +55,13 @@ type CarListItemProps = {
   car: CarWithRelations;
   onPress: () => void;
   index?: number;
+  onExpandedChange?: (expanded: boolean) => void;
 };
 
 const CONFIDENCE_HELP_TEXT =
   "Confidence reflects photo quality and coverage, vehicle detail consistency, and how many reliable market comps were matched.";
 
-export function CarListItem({ car, onPress, index = 0 }: CarListItemProps) {
+export function CarListItem({ car, onPress, index = 0, onExpandedChange }: CarListItemProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const usdToCadRate = useExchangeRate();
@@ -111,6 +112,7 @@ export function CarListItem({ car, onPress, index = 0 }: CarListItemProps) {
       useNativeDriver: true,
     }).start();
     setExpanded(nextExpanded);
+    onExpandedChange?.(nextExpanded);
     if (!nextExpanded) {
       setShowConfidenceHelp(false);
     }
@@ -254,7 +256,7 @@ function createStyles(colors: AppColors) {
       gap: 8,
     },
     pressed: {
-      opacity: 0.9,
+      backgroundColor: colors.surfaceMuted,
     },
     headerRow: {
       flexDirection: "row",
