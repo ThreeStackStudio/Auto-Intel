@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, TextInput, type TextInputProps, View } from "react-native";
 
 import { useAppTheme, type AppColors } from "../theme";
 
@@ -11,6 +11,7 @@ type TextFieldProps = {
   secureTextEntry?: boolean;
   keyboardType?: "default" | "email-address" | "phone-pad" | "number-pad";
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  onFocus?: TextInputProps["onFocus"];
 };
 
 export function TextField({
@@ -20,7 +21,8 @@ export function TextField({
   placeholder,
   secureTextEntry = false,
   keyboardType = "default",
-  autoCapitalize = "sentences"
+  autoCapitalize = "sentences",
+  onFocus
 }: TextFieldProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -37,6 +39,7 @@ export function TextField({
         secureTextEntry={secureTextEntry}
         keyboardType={keyboardType}
         autoCapitalize={autoCapitalize}
+        onFocus={onFocus}
       />
     </View>
   );

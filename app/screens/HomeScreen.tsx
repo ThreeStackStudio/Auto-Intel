@@ -117,6 +117,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         <Text style={styles.subtitle}>AI car valuations from your camera.</Text>
 
         <PrimaryButton title="Scan a Car" onPress={() => navigation.navigate("Camera")} />
+        <PrimaryButton title="Profile" onPress={() => navigation.navigate("Profile")} variant="secondary" />
         <PrimaryButton title="Logout" onPress={handleLogout} variant="secondary" />
 
         <Text style={styles.sectionTitle}>Previous Analyses</Text>

@@ -3,6 +3,7 @@ import type { Session } from "@supabase/supabase-js";
 export type RootStackParamList = {
   Auth: undefined;
   Home: undefined;
+  Profile: undefined;
   Camera: undefined;
   Result: { car: CarWithRelations };
 };
