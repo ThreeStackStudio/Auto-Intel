@@ -8,6 +8,7 @@ import { useAuth } from "./app/hooks/useAuth";
 import { AuthScreen } from "./app/screens/AuthScreen";
 import { CameraScreen } from "./app/screens/CameraScreen";
 import { HomeScreen } from "./app/screens/HomeScreen";
+import { ProfileScreen } from "./app/screens/ProfileScreen";
 import { ResultScreen } from "./app/screens/ResultScreen";
 import { useAppTheme } from "./app/theme";
 import type { RootStackParamList } from "./app/types";
@@ -64,6 +65,7 @@ export default function App() {
           ) : (
             <>
               <Stack.Screen name="Home" component={HomeScreen} options={{ title: "Home" }} />
+              <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: "Profile" }} />
               <Stack.Screen name="Camera" component={CameraScreen} options={{ title: "Scan a Car" }} />
               <Stack.Screen name="Result" component={ResultScreen} options={{ title: "Result" }} />
             </>

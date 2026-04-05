@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -28,6 +28,16 @@ export function AuthScreen(_props: AuthScreenProps) {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const scrollViewRef = useRef<ScrollView | null>(null);
+
+  function handleInputFocus(event: any) {
+    const target = event.nativeEvent.target;
+    if (!target) return;
+
+    setTimeout(() => {
+      (scrollViewRef.current as any)?.scrollResponderScrollNativeHandleToKeyboard?.(target, 120, true);
+    }, 80);
+  }
 
   async function handleLogin() {
     if (!email || !password) {
@@ -115,7 +125,11 @@ export function AuthScreen(_props: AuthScreenProps) {
       style={styles.keyboardContainer}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        ref={scrollViewRef}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.content}>
           <Text style={styles.title}>AutoIntel</Text>
           <Text style={styles.subtitle}>
@@ -124,14 +138,15 @@ export function AuthScreen(_props: AuthScreenProps) {
 
           {isSignUpMode && (
             <>
-              <TextField label="First Name" value={firstName} onChangeText={setFirstName} />
-              <TextField label="Last Name" value={lastName} onChangeText={setLastName} />
+              <TextField label="First Name" value={firstName} onChangeText={setFirstName} onFocus={handleInputFocus} />
+              <TextField label="Last Name" value={lastName} onChangeText={setLastName} onFocus={handleInputFocus} />
               <TextField
                 label="Phone"
                 value={phone}
                 onChangeText={setPhone}
                 keyboardType="phone-pad"
                 autoCapitalize="none"
+                onFocus={handleInputFocus}
               />
             </>
           )}
@@ -142,6 +157,7 @@ export function AuthScreen(_props: AuthScreenProps) {
             onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
+            onFocus={handleInputFocus}
           />
           <TextField
             label="Password"
@@ -149,6 +165,7 @@ export function AuthScreen(_props: AuthScreenProps) {
             onChangeText={setPassword}
             secureTextEntry
             autoCapitalize="none"
+            onFocus={handleInputFocus}
           />
 
           <PrimaryButton

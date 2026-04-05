@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -95,7 +97,17 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
   const [isAnalysing, setIsAnalysing] = useState(false);
   const isCancelledRef = useRef(false);
   const draftResolved = useRef(false);
+  const scrollViewRef = useRef<ScrollView | null>(null);
   const { draftLoaded, draft, saveDraft, clearDraft } = useDraftScan();
+
+  function handleInputFocus(event: any) {
+    const target = event.nativeEvent.target;
+    if (!target) return;
+
+    setTimeout(() => {
+      (scrollViewRef.current as any)?.scrollResponderScrollNativeHandleToKeyboard?.(target, 120, true);
+    }, 80);
+  }
 
   const parsedYear = Number(vehicleYear.trim());
   const parsedMileage = Number(vehicleMileageKm.replace(/[^\d]/g, ""));
@@ -438,112 +450,126 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Vehicle Intake</Text>
-        <Text style={styles.subtitle}>
-          Enter vehicle details, then complete each required photo with automatic angle verification.
-        </Text>
-
-        <Text style={styles.sectionTitle}>Vehicle Details</Text>
-        <View style={styles.formGroup}>
-          <TextField
-            label="Year"
-            value={vehicleYear}
-            onChangeText={setVehicleYear}
-            keyboardType="number-pad"
-            autoCapitalize="none"
-            placeholder="e.g. 2019"
-          />
-          <TextField
-            label="Make"
-            value={vehicleMake}
-            onChangeText={setVehicleMake}
-            autoCapitalize="words"
-            placeholder="e.g. Honda"
-          />
-          <TextField
-            label="Model"
-            value={vehicleModel}
-            onChangeText={setVehicleModel}
-            autoCapitalize="words"
-            placeholder="e.g. Civic"
-          />
-          <TextField
-            label="Mileage (km)"
-            value={vehicleMileageKm}
-            onChangeText={(value) => setVehicleMileageKm(value.replace(/[^\d]/g, ""))}
-            keyboardType="number-pad"
-            autoCapitalize="none"
-            placeholder="e.g. 125000"
-          />
-          <TextField
-            label="Recent work or upgrades (optional)"
-            value={userProvidedDetails}
-            onChangeText={(value) => setUserProvidedDetails(value.slice(0, MAX_USER_DETAILS_LENGTH))}
-            autoCapitalize="sentences"
-            placeholder="e.g. New brakes + tires last month"
-          />
-          <Text style={styles.fieldHint}>
-            Add a short note about repairs, maintenance, or upgrades not obvious from photos (
-            {userProvidedDetails.length}/{MAX_USER_DETAILS_LENGTH}).
+      <KeyboardAvoidingView
+        style={styles.keyboardContainer}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Text style={styles.title}>Vehicle Intake</Text>
+          <Text style={styles.subtitle}>
+            Enter vehicle details, then complete each required photo with automatic angle verification.
           </Text>
-        </View>
 
-        <Text style={styles.sectionTitle}>
-          Required Photos ({completedCount}/{REQUIRED_STEPS.length})
-        </Text>
-        <View style={styles.stepsList}>
-          {REQUIRED_STEPS.map((step, index) => {
-            const shot = capturedShots[step.id];
-            const isActive = step.id === activeStep.id;
-            return (
-              <Pressable
-                key={step.id}
-                onPress={() => setSelectedStepId(step.id)}
-                style={({ pressed }) => [
-                  styles.stepCard,
-                  shot ? styles.stepDone : styles.stepPending,
-                  isActive && styles.stepActive,
-                  pressed && styles.stepPressed
-                ]}
-              >
-                <View style={styles.stepTextWrap}>
-                  <Text style={styles.stepLabel}>
-                    {index + 1}. {step.label}
-                  </Text>
-                  <Text style={styles.stepStatus}>
-                    {shot
-                      ? `Verified (${Math.round(shot.verificationConfidence * 100)}%) - tap to retake`
-                      : "Waiting for photo"}
-                  </Text>
-                </View>
-                {shot ? <Image source={{ uri: shot.localUri }} style={styles.stepThumb} /> : null}
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <View style={styles.activePanel}>
-          <Text style={styles.activeTitle}>
-            {activeShot ? `Retake: ${activeStep.label}` : `Active Step: ${activeStep.label}`}
-          </Text>
-          <Text style={styles.activeHint}>{activeStep.verificationHint}</Text>
-          {activeShot ? <Image source={{ uri: activeShot.localUri }} style={styles.activePreview} /> : null}
-          <View style={styles.buttonGroup}>
-            <PrimaryButton title={activeShot ? "Retake With Camera" : "Take Photo"} onPress={addFromCamera} />
-            <PrimaryButton
-              title={activeShot ? "Replace From Library" : "Upload From Library"}
-              onPress={addFromLibrary}
-              variant="secondary"
+          <Text style={styles.sectionTitle}>Vehicle Details</Text>
+          <View style={styles.formGroup}>
+            <TextField
+              label="Year"
+              value={vehicleYear}
+              onChangeText={setVehicleYear}
+              keyboardType="number-pad"
+              autoCapitalize="none"
+              placeholder="e.g. 2019"
+              onFocus={handleInputFocus}
             />
-            {activeShot ? (
-              <PrimaryButton title="Clear Current Photo" onPress={clearActiveShot} variant="secondary" />
-            ) : null}
+            <TextField
+              label="Make"
+              value={vehicleMake}
+              onChangeText={setVehicleMake}
+              autoCapitalize="words"
+              placeholder="e.g. Honda"
+              onFocus={handleInputFocus}
+            />
+            <TextField
+              label="Model"
+              value={vehicleModel}
+              onChangeText={setVehicleModel}
+              autoCapitalize="words"
+              placeholder="e.g. Civic"
+              onFocus={handleInputFocus}
+            />
+            <TextField
+              label="Mileage (km)"
+              value={vehicleMileageKm}
+              onChangeText={(value) => setVehicleMileageKm(value.replace(/[^\d]/g, ""))}
+              keyboardType="number-pad"
+              autoCapitalize="none"
+              placeholder="e.g. 125000"
+              onFocus={handleInputFocus}
+            />
+            <TextField
+              label="Recent work or upgrades (optional)"
+              value={userProvidedDetails}
+              onChangeText={(value) => setUserProvidedDetails(value.slice(0, MAX_USER_DETAILS_LENGTH))}
+              autoCapitalize="sentences"
+              placeholder="e.g. New brakes + tires last month"
+              onFocus={handleInputFocus}
+            />
+            <Text style={styles.fieldHint}>
+              Add a short note about repairs, maintenance, or upgrades not obvious from photos (
+              {userProvidedDetails.length}/{MAX_USER_DETAILS_LENGTH}).
+            </Text>
           </View>
-        </View>
 
-        <PrimaryButton title="Run Analysis" onPress={handleAnalyze} disabled={!canAnalyze} />
-      </ScrollView>
+          <Text style={styles.sectionTitle}>
+            Required Photos ({completedCount}/{REQUIRED_STEPS.length})
+          </Text>
+          <View style={styles.stepsList}>
+            {REQUIRED_STEPS.map((step, index) => {
+              const shot = capturedShots[step.id];
+              const isActive = step.id === activeStep.id;
+              return (
+                <Pressable
+                  key={step.id}
+                  onPress={() => setSelectedStepId(step.id)}
+                  style={({ pressed }) => [
+                    styles.stepCard,
+                    shot ? styles.stepDone : styles.stepPending,
+                    isActive && styles.stepActive,
+                    pressed && styles.stepPressed
+                  ]}
+                >
+                  <View style={styles.stepTextWrap}>
+                    <Text style={styles.stepLabel}>
+                      {index + 1}. {step.label}
+                    </Text>
+                    <Text style={styles.stepStatus}>
+                      {shot
+                        ? `Verified (${Math.round(shot.verificationConfidence * 100)}%) - tap to retake`
+                        : "Waiting for photo"}
+                    </Text>
+                  </View>
+                  {shot ? <Image source={{ uri: shot.localUri }} style={styles.stepThumb} /> : null}
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={styles.activePanel}>
+            <Text style={styles.activeTitle}>
+              {activeShot ? `Retake: ${activeStep.label}` : `Active Step: ${activeStep.label}`}
+            </Text>
+            <Text style={styles.activeHint}>{activeStep.verificationHint}</Text>
+            {activeShot ? <Image source={{ uri: activeShot.localUri }} style={styles.activePreview} /> : null}
+            <View style={styles.buttonGroup}>
+              <PrimaryButton title={activeShot ? "Retake With Camera" : "Take Photo"} onPress={addFromCamera} />
+              <PrimaryButton
+                title={activeShot ? "Replace From Library" : "Upload From Library"}
+                onPress={addFromLibrary}
+                variant="secondary"
+              />
+              {activeShot ? (
+                <PrimaryButton title="Clear Current Photo" onPress={clearActiveShot} variant="secondary" />
+              ) : null}
+            </View>
+          </View>
+
+          <PrimaryButton title="Run Analysis" onPress={handleAnalyze} disabled={!canAnalyze} />
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -553,6 +579,9 @@ function createStyles(colors: AppColors) {
     container: {
       flex: 1,
       backgroundColor: colors.background
+    },
+    keyboardContainer: {
+      flex: 1
     },
     content: {
       paddingHorizontal: 16,

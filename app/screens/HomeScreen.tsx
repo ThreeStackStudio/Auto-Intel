@@ -39,12 +39,20 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       `${car.year} ${car.make} ${car.model}`.toLowerCase().includes(query)
     );
   }, [history, searchQuery]);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
     try {
       const cars = await fetchUserCars();
       setHistory(cars);
+      setExpandedIds((prev) => {
+        const next = new Set<string>();
+        cars.forEach((car) => {
+          if (prev.has(car.id)) next.add(car.id);
+        });
+        return next;
+      });
     } catch (error: any) {
       Alert.alert("Could not load history", error?.message ?? "Please try again.");
     } finally {
@@ -88,12 +96,29 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     try {
       await deleteCarAnalysis(carId);
       setHistory((prev) => prev.filter((car) => car.id !== carId));
+      setExpandedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(carId);
+        return next;
+      });
     } catch (error: any) {
       Alert.alert("Delete failed", error?.message ?? "Could not delete this analysis.");
     } finally {
       setDeletingId(null);
     }
   }
+
+  const handleExpandedChange = useCallback((carId: string, expanded: boolean) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (expanded) {
+        next.add(carId);
+      } else {
+        next.delete(carId);
+      }
+      return next;
+    });
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -102,6 +127,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         <Text style={styles.subtitle}>AI car valuations from your camera.</Text>
 
         <PrimaryButton title="Scan a Car" onPress={() => navigation.navigate("Camera")} />
+        <PrimaryButton title="Profile" onPress={() => navigation.navigate("Profile")} variant="secondary" />
         <PrimaryButton title="Logout" onPress={handleLogout} variant="secondary" />
 
         <Text style={styles.sectionTitle}>Previous Analyses</Text>
@@ -141,8 +167,16 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
               </View>
             }
             renderItem={({ item, index }) => (
-              <SwipeToDeleteRow onDelete={() => promptDeleteAnalysis(item)} disabled={Boolean(deletingId)}>
-                <CarListItem car={item} index={index} onPress={() => navigation.navigate("Result", { car: item })} />
+              <SwipeToDeleteRow
+                onDelete={() => promptDeleteAnalysis(item)}
+                disabled={Boolean(deletingId) || expandedIds.has(item.id)}
+              >
+                <CarListItem
+                  car={item}
+                  index={index}
+                  onExpandedChange={(expanded) => handleExpandedChange(item.id, expanded)}
+                  onPress={() => navigation.navigate("Result", { car: item })}
+                />
               </SwipeToDeleteRow>
             )}
           />
