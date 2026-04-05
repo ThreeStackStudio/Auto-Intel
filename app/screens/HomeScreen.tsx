@@ -6,6 +6,7 @@ import {
   SafeAreaView,
   StyleSheet,
   Text,
+  TextInput,
   View
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
@@ -29,6 +30,15 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const [loading, setLoading] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredHistory = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return history;
+    return history.filter((car) =>
+      `${car.year} ${car.make} ${car.model}`.toLowerCase().includes(query)
+    );
+  }, [history, searchQuery]);
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
@@ -95,13 +105,24 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         <PrimaryButton title="Logout" onPress={handleLogout} variant="secondary" />
 
         <Text style={styles.sectionTitle}>Previous Analyses</Text>
+        <TextInput
+          style={styles.searchInput}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search by make, model, or year…"
+          placeholderTextColor={colors.textSubtle}
+          autoCapitalize="none"
+          autoCorrect={false}
+          clearButtonMode="while-editing"
+          returnKeyType="search"
+        />
         {initialLoad && loading ? (
           <View style={styles.listContent}>
             {[0, 1, 2, 3].map((i) => <SkeletonCard key={i} />)}
           </View>
         ) : (
           <FlatList
-            data={history}
+            data={filteredHistory}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
             refreshControl={
@@ -109,8 +130,14 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
             }
             ListEmptyComponent={
               <View style={styles.emptyState}>
-                <Text style={styles.emptyTitle}>No scans yet</Text>
-                <Text style={styles.emptySubtitle}>Scan your first car to start building history.</Text>
+                <Text style={styles.emptyTitle}>
+                  {searchQuery.trim() ? "No results" : "No scans yet"}
+                </Text>
+                <Text style={styles.emptySubtitle}>
+                  {searchQuery.trim()
+                    ? `No scans matching "${searchQuery.trim()}".`
+                    : "Scan your first car to start building history."}
+                </Text>
               </View>
             }
             renderItem={({ item, index }) => (
@@ -152,6 +179,16 @@ function createStyles(colors: AppColors) {
       fontWeight: "800",
       color: colors.text,
       marginTop: 8
+    },
+    searchInput: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      fontSize: 15,
+      color: colors.text
     },
     listContent: {
       paddingBottom: 24,
