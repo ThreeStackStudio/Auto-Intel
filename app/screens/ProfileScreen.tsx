@@ -17,6 +17,7 @@ import {
   changePasswordWithVerification,
   deleteMyAccount,
   fetchMyProfile,
+  updateMyPhone,
   type UserProfile
 } from "../services/accountService";
 import { useAppTheme, type AppColors } from "../theme";
@@ -31,6 +32,8 @@ export function ProfileScreen(_props: ProfileScreenProps) {
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [phoneDraft, setPhoneDraft] = useState("");
+  const [updatingPhone, setUpdatingPhone] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -62,6 +65,7 @@ export function ProfileScreen(_props: ProfileScreenProps) {
     try {
       const next = await fetchMyProfile();
       setProfile(next);
+      setPhoneDraft(next.phone ?? "");
     } catch (error: any) {
       Alert.alert("Could not load profile", error?.message ?? "Please try again.");
     } finally {
@@ -104,6 +108,32 @@ export function ProfileScreen(_props: ProfileScreenProps) {
       Alert.alert("Password change failed", error?.message ?? "Please try again.");
     } finally {
       setUpdatingPassword(false);
+    }
+  }
+
+  async function handleUpdatePhone() {
+    const nextPhone = phoneDraft.trim();
+    if (!nextPhone) {
+      Alert.alert("Missing phone", "Enter a phone number.");
+      return;
+    }
+
+    const currentPhone = profile?.phone.trim() ?? "";
+    if (nextPhone === currentPhone) {
+      Alert.alert("No change", "Your phone number is already up to date.");
+      return;
+    }
+
+    setUpdatingPhone(true);
+    try {
+      await updateMyPhone(nextPhone);
+      setProfile((prev) => (prev ? { ...prev, phone: nextPhone } : prev));
+      setPhoneDraft(nextPhone);
+      Alert.alert("Phone updated", "Your phone number was updated successfully.");
+    } catch (error: any) {
+      Alert.alert("Update failed", error?.message ?? "Could not update your phone number.");
+    } finally {
+      setUpdatingPhone(false);
     }
   }
 
@@ -177,6 +207,24 @@ export function ProfileScreen(_props: ProfileScreenProps) {
           </View>
 
           <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Update Phone Number</Text>
+            <TextField
+              label="Phone"
+              value={phoneDraft}
+              onChangeText={setPhoneDraft}
+              keyboardType="phone-pad"
+              autoCapitalize="none"
+              onFocus={handleInputFocus}
+            />
+            <PrimaryButton
+              title="Save Phone Number"
+              onPress={handleUpdatePhone}
+              loading={updatingPhone}
+              disabled={updatingPassword || deletingAccount || loadingProfile}
+            />
+          </View>
+
+          <View style={styles.card}>
             <Text style={styles.sectionTitle}>Change Password</Text>
             <TextField
               label="Current Password"
@@ -206,7 +254,7 @@ export function ProfileScreen(_props: ProfileScreenProps) {
               title="Update Password"
               onPress={handleChangePassword}
               loading={updatingPassword}
-              disabled={deletingAccount}
+              disabled={deletingAccount || updatingPhone}
             />
           </View>
 
@@ -227,7 +275,7 @@ export function ProfileScreen(_props: ProfileScreenProps) {
               title="Delete Account"
               onPress={handleDeleteAccountPrompt}
               loading={deletingAccount}
-              disabled={updatingPassword}
+              disabled={updatingPassword || updatingPhone}
             />
           </View>
         </View>

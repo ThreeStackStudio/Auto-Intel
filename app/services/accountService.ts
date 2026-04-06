@@ -41,6 +41,50 @@ export async function fetchMyProfile(): Promise<UserProfile> {
   };
 }
 
+export async function updateMyPhone(phone: string): Promise<void> {
+  const nextPhone = phone.trim();
+  if (!nextPhone) {
+    throw new Error("Phone number is required.");
+  }
+
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error(userError?.message ?? "Could not load user.");
+  }
+
+  const { data: updatedProfile, error: updateError } = await supabase
+    .from("profiles")
+    .update({ phone: nextPhone })
+    .eq("id", user.id)
+    .select("id")
+    .maybeSingle();
+
+  if (updateError) {
+    throw new Error(`Could not update phone: ${updateError.message}`);
+  }
+
+  if (!updatedProfile) {
+    throw new Error("Could not update phone: profile not found.");
+  }
+
+  const { error: metadataError } = await supabase.auth.updateUser({
+    data: {
+      ...user.user_metadata,
+      phone: nextPhone
+    }
+  });
+
+  if (metadataError) {
+    logInfo("AccountService", "Phone updated but metadata sync failed.", {
+      message: metadataError.message
+    });
+  }
+}
+
 export async function verifyCurrentPassword(password: string): Promise<void> {
   const trimmed = password.trim();
   if (!trimmed) {
