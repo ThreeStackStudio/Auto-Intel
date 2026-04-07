@@ -3,6 +3,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -28,6 +29,7 @@ export function AuthScreen(_props: AuthScreenProps) {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
   const scrollViewRef = useRef<ScrollView | null>(null);
 
   function handleInputFocus(event: any) {
@@ -59,6 +61,30 @@ export function AuthScreen(_props: AuthScreenProps) {
       Alert.alert("Login failed", error?.message ?? "Please try again.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleForgotPassword() {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) {
+      Alert.alert("Email required", "Enter your email address above, then tap Forgot password.");
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail);
+      if (error) {
+        throw error;
+      }
+      Alert.alert(
+        "Check your email",
+        "If an account exists for that address, a password reset link has been sent."
+      );
+    } catch (error: any) {
+      Alert.alert("Reset failed", error?.message ?? "Could not send reset email. Please try again.");
+    } finally {
+      setForgotLoading(false);
     }
   }
 
@@ -168,6 +194,18 @@ export function AuthScreen(_props: AuthScreenProps) {
             onFocus={handleInputFocus}
           />
 
+          {!isSignUpMode && (
+            <Pressable
+              onPress={handleForgotPassword}
+              disabled={forgotLoading}
+              style={({ pressed }) => [styles.forgotLink, pressed && styles.forgotLinkPressed]}
+            >
+              <Text style={styles.forgotLinkText}>
+                {forgotLoading ? "Sending…" : "Forgot password?"}
+              </Text>
+            </Pressable>
+          )}
+
           <PrimaryButton
             title={isSignUpMode ? "Sign Up" : "Login"}
             onPress={isSignUpMode ? handleSignUp : handleLogin}
@@ -211,6 +249,19 @@ function createStyles(colors: AppColors) {
       lineHeight: 22,
       color: colors.textMuted,
       marginBottom: 8
+    },
+    forgotLink: {
+      alignSelf: "flex-end",
+      paddingVertical: 2,
+      marginTop: -4
+    },
+    forgotLinkPressed: {
+      opacity: 0.55
+    },
+    forgotLinkText: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.link
     }
   });
 }
