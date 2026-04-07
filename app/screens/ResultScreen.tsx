@@ -146,6 +146,15 @@ function toCadAmount(price: number, currency: string | undefined, rate: number) 
   return Math.round(price);
 }
 
+function formatDisplay(cadValue: number, currency: "CAD" | "USD", rate: number): string {
+  const converted = currency === "USD" && rate > 0 ? cadValue / rate : cadValue;
+  return new Intl.NumberFormat("en-CA", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0
+  }).format(Math.round(converted));
+}
+
 function formatImpactPercent(value: number) {
   const rounded = Math.round(value * 10) / 10;
   const absolute = Math.abs(rounded);
@@ -212,6 +221,7 @@ export function ResultScreen({ navigation, route }: ResultScreenProps) {
   const [isGalleryVisible, setIsGalleryVisible] = useState(false);
   const [galleryStartIndex, setGalleryStartIndex] = useState(0);
   const [showConfidenceHelp, setShowConfidenceHelp] = useState(false);
+  const [displayCurrency, setDisplayCurrency] = useState<"CAD" | "USD">("CAD");
   const [valuationHistory, setValuationHistory] = useState<
     Pick<CarRow, "id" | "estimated_value" | "created_at">[]
   >([]);
@@ -344,11 +354,24 @@ export function ResultScreen({ navigation, route }: ResultScreenProps) {
                 <Text style={styles.summary}>{userNotes}</Text>
               </>
             ) : null}
-            <Text style={styles.price}>{formatCurrency(displayPrice)}</Text>
+            <Text style={styles.price}>{formatDisplay(displayPrice, displayCurrency, usdToCadRate)}</Text>
             {lowValue > 0 && highValue > 0 ? (
-              <Text style={styles.range}>{formatCurrency(lowValue)} – {formatCurrency(highValue)}</Text>
+              <Text style={styles.range}>{formatDisplay(lowValue, displayCurrency, usdToCadRate)} – {formatDisplay(highValue, displayCurrency, usdToCadRate)}</Text>
             ) : null}
-            <Text style={styles.meta}>All monetary values shown in CAD</Text>
+            <View style={styles.currencyToggleRow}>
+              <Pressable
+                onPress={() => setDisplayCurrency("CAD")}
+                style={[styles.currencyChip, displayCurrency === "CAD" && styles.currencyChipActive]}
+              >
+                <Text style={[styles.currencyChipText, displayCurrency === "CAD" && styles.currencyChipTextActive]}>CAD</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setDisplayCurrency("USD")}
+                style={[styles.currencyChip, displayCurrency === "USD" && styles.currencyChipActive]}
+              >
+                <Text style={[styles.currencyChipText, displayCurrency === "USD" && styles.currencyChipTextActive]}>USD</Text>
+              </Pressable>
+            </View>
             <View style={styles.confidenceRow}>
               <Text style={styles.confidence}>Confidence: {formatPercent(confidence)}</Text>
               <Pressable
@@ -397,7 +420,7 @@ export function ResultScreen({ navigation, route }: ResultScreenProps) {
                 <>
                   <Text style={styles.sectionTitle}>Market Value Inputs</Text>
                   <Text style={styles.summary}>
-                    Base market value from comps: {formatCurrency(details.base_market_value)}
+                    Base market value from comps: {formatDisplay(details.base_market_value, displayCurrency, usdToCadRate)}
                   </Text>
                   <Text style={styles.summary}>
                     Condition factor: x{conditionFactor.toFixed(2)}
@@ -446,7 +469,7 @@ export function ResultScreen({ navigation, route }: ResultScreenProps) {
                   {listings.slice(0, 4).map((listing, index) => (
                     <View key={`${listing.title}-${index}`} style={styles.compItem}>
                       <Text style={styles.summary}>
-                        {listing.source}: {listing.title} - {formatCurrency(toCadAmount(listing.price, listing.currency, usdToCadRate))}
+                        {listing.source}: {listing.title} - {formatDisplay(toCadAmount(listing.price, listing.currency, usdToCadRate), displayCurrency, usdToCadRate)}
                       </Text>
                       {typeof listing.url === "string" && listing.url.trim() ? (
                         <Text style={styles.link} onPress={() => void openListingUrl(listing.url)}>
@@ -614,6 +637,30 @@ function createStyles(colors: AppColors) {
       fontSize: 14,
       color: colors.textMuted,
       fontWeight: "600"
+    },
+    currencyToggleRow: {
+      flexDirection: "row",
+      gap: 6
+    },
+    currencyChip: {
+      paddingHorizontal: 12,
+      paddingVertical: 4,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceMuted
+    },
+    currencyChipActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.secondarySurface
+    },
+    currencyChipText: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.textMuted
+    },
+    currencyChipTextActive: {
+      color: colors.primary
     },
     sectionTitle: {
       fontSize: 16,
