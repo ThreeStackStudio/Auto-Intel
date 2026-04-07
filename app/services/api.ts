@@ -314,7 +314,8 @@ async function parseFunctionErrorMessage(error: any) {
         const parsed = tryParseJson(text);
         const nestedError =
           parsed?.details?.error?.message ??
-          parsed?.details?.message;
+          parsed?.details?.message ??
+          (typeof parsed?.details === "string" ? parsed.details : undefined);
         const topError = parsed?.error ?? parsed?.message;
         const combinedError =
           typeof topError === "string" && typeof nestedError === "string"

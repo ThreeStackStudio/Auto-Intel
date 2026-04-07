@@ -1,9 +1,15 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 const OPENAI_MODEL = Deno.env.get("OPENAI_VISION_MODEL") ?? "gpt-4.1-mini";
 const USD_TO_CAD_RATE = Number(Deno.env.get("USD_TO_CAD_RATE") ?? "1.36");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const RATE_LIMIT_WINDOW_SECONDS = Number(Deno.env.get("ANALYZE_CAR_RATE_LIMIT_WINDOW_SECONDS") ?? "3600");
+const RATE_LIMIT_ANALYZE_MAX_REQUESTS = Number(Deno.env.get("ANALYZE_CAR_RATE_LIMIT_ANALYZE_MAX_REQUESTS") ?? "20");
+const RATE_LIMIT_VERIFY_MAX_REQUESTS = Number(Deno.env.get("ANALYZE_CAR_RATE_LIMIT_VERIFY_MAX_REQUESTS") ?? "120");
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -58,6 +64,16 @@ type MarketValuation = {
   method: string;
 };
 
+type FunctionMode = "analyze_vehicle" | "verify_photo";
+
+type RateLimitDecision = {
+  allowed: boolean;
+  remaining: number;
+  reset_at: string;
+  retry_after_seconds: number;
+  limit: number;
+};
+
 const REQUIRED_VIEWS = new Set<PhotoView>([
   "front",
   "driver_side",
@@ -67,11 +83,128 @@ const REQUIRED_VIEWS = new Set<PhotoView>([
   "tire_tread"
 ]);
 
-function jsonResponse(body: Record<string, unknown>, status = 200) {
+const adminClient =
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      })
+    : null;
+
+function jsonResponse(body: Record<string, unknown>, status = 200, extraHeaders: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" }
+    headers: { ...corsHeaders, "Content-Type": "application/json", ...extraHeaders }
   });
+}
+
+function withHeaders(response: Response, extraHeaders: Record<string, string>) {
+  const merged = new Headers(response.headers);
+  for (const [key, value] of Object.entries(extraHeaders)) {
+    merged.set(key, value);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: merged
+  });
+}
+
+function getBearerToken(authorizationHeader: string | null) {
+  if (!authorizationHeader) return null;
+  const match = authorizationHeader.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || null;
+}
+
+function resolveMode(value: unknown): FunctionMode | null {
+  const mode = String(value ?? "analyze_vehicle");
+  if (mode === "analyze_vehicle" || mode === "verify_photo") {
+    return mode;
+  }
+  return null;
+}
+
+function buildRateLimitHeaders(limit: number, remaining: number, resetAt: string, retryAfterSeconds: number) {
+  const headers: Record<string, string> = {
+    "X-RateLimit-Limit": String(limit),
+    "X-RateLimit-Remaining": String(Math.max(0, remaining)),
+    "X-RateLimit-Reset": resetAt
+  };
+
+  if (retryAfterSeconds > 0) {
+    headers["Retry-After"] = String(retryAfterSeconds);
+  }
+
+  return headers;
+}
+
+function ensureRateLimitConfig() {
+  if (!Number.isInteger(RATE_LIMIT_WINDOW_SECONDS) || RATE_LIMIT_WINDOW_SECONDS <= 0) {
+    throw new Error("Invalid ANALYZE_CAR_RATE_LIMIT_WINDOW_SECONDS.");
+  }
+  if (!Number.isInteger(RATE_LIMIT_ANALYZE_MAX_REQUESTS) || RATE_LIMIT_ANALYZE_MAX_REQUESTS <= 0) {
+    throw new Error("Invalid ANALYZE_CAR_RATE_LIMIT_ANALYZE_MAX_REQUESTS.");
+  }
+  if (!Number.isInteger(RATE_LIMIT_VERIFY_MAX_REQUESTS) || RATE_LIMIT_VERIFY_MAX_REQUESTS <= 0) {
+    throw new Error("Invalid ANALYZE_CAR_RATE_LIMIT_VERIFY_MAX_REQUESTS.");
+  }
+}
+
+async function requireAuthenticatedUser(req: Request) {
+  if (!adminClient) {
+    throw new Error("Missing Supabase admin function secrets.");
+  }
+
+  const accessToken = getBearerToken(req.headers.get("authorization"));
+  if (!accessToken) {
+    return { error: jsonResponse({ error: "Missing Authorization token." }, 401) };
+  }
+
+  const { data, error } = await adminClient.auth.getUser(accessToken);
+  if (error || !data.user) {
+    return { error: jsonResponse({ error: "Invalid or expired token." }, 401) };
+  }
+
+  return { user: data.user };
+}
+
+async function consumeRateLimit(userId: string, mode: FunctionMode): Promise<RateLimitDecision> {
+  if (!adminClient) {
+    throw new Error("Missing Supabase admin function secrets.");
+  }
+
+  ensureRateLimitConfig();
+  const limit = mode === "verify_photo" ? RATE_LIMIT_VERIFY_MAX_REQUESTS : RATE_LIMIT_ANALYZE_MAX_REQUESTS;
+
+  const { data, error } = await adminClient.rpc("consume_edge_rate_limit", {
+    p_user_id: userId,
+    p_function_name: "analyze-car",
+    p_mode: mode,
+    p_window_seconds: RATE_LIMIT_WINDOW_SECONDS,
+    p_max_requests: limit
+  });
+
+  if (error) {
+    throw new Error(`Rate limit check failed: ${error.message}`);
+  }
+
+  const result = Array.isArray(data) ? data[0] : data;
+  if (!result || typeof result !== "object") {
+    throw new Error("Rate limit check returned an invalid payload.");
+  }
+
+  const raw = result as Record<string, unknown>;
+  const allowed = Boolean(raw.allowed);
+  const remaining = Number(raw.remaining ?? 0);
+  const resetAt = String(raw.reset_at ?? new Date(Date.now() + RATE_LIMIT_WINDOW_SECONDS * 1000).toISOString());
+  const retryAfterSeconds = Number(raw.retry_after_seconds ?? 0);
+
+  return {
+    allowed,
+    remaining: Number.isFinite(remaining) ? Math.max(0, Math.floor(remaining)) : 0,
+    reset_at: resetAt,
+    retry_after_seconds: Number.isFinite(retryAfterSeconds) ? Math.max(0, Math.ceil(retryAfterSeconds)) : 0,
+    limit
+  };
 }
 
 function clamp01(value: number) {
@@ -779,19 +912,55 @@ serve(async (req) => {
     return jsonResponse({ error: "Method not allowed." }, 405);
   }
 
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !adminClient) {
+    return jsonResponse({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." }, 500);
+  }
+
   if (!OPENAI_API_KEY) {
     return jsonResponse({ error: "Missing OPENAI_API_KEY." }, 500);
   }
 
   try {
-    const input = (await req.json()) as Record<string, unknown>;
-    const mode = String(input.mode ?? "analyze_vehicle");
-
-    if (mode === "verify_photo") {
-      return await handleVerifyPhoto(input);
+    const authResult = await requireAuthenticatedUser(req);
+    if ("error" in authResult) {
+      return authResult.error;
     }
 
-    return await handleAnalyzeVehicle(input);
+    const input = (await req.json()) as Record<string, unknown>;
+    const mode = resolveMode(input.mode);
+    if (!mode) {
+      return jsonResponse({ error: "Invalid mode. Use analyze_vehicle or verify_photo." }, 400);
+    }
+
+    const rateLimit = await consumeRateLimit(authResult.user.id, mode);
+    const rateLimitHeaders = buildRateLimitHeaders(
+      rateLimit.limit,
+      rateLimit.remaining,
+      rateLimit.reset_at,
+      rateLimit.retry_after_seconds
+    );
+
+    if (!rateLimit.allowed) {
+      return jsonResponse(
+        {
+          error: "Rate limit exceeded for analyze-car. Please retry later.",
+          code: "rate_limit_exceeded",
+          limit: rateLimit.limit,
+          remaining: 0,
+          reset_at: rateLimit.reset_at
+        },
+        429,
+        rateLimitHeaders
+      );
+    }
+
+    if (mode === "verify_photo") {
+      const result = await handleVerifyPhoto(input);
+      return withHeaders(result, rateLimitHeaders);
+    }
+
+    const result = await handleAnalyzeVehicle(input);
+    return withHeaders(result, rateLimitHeaders);
   } catch (error) {
     return jsonResponse(
       {
