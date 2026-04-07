@@ -16,6 +16,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import { LoadingOverlay } from "../components/LoadingOverlay";
 import { PrimaryButton } from "../components/PrimaryButton";
+import { SelectField } from "../components/SelectField";
 import { TextField } from "../components/TextField";
 import { useDraftScan } from "../hooks/useDraftScan";
 import type { DraftCapturedShot } from "../hooks/useDraftScan";
@@ -23,8 +24,9 @@ import { analyzeCarImages, verifyCarPhoto } from "../services/api";
 import { saveCarAnalysis } from "../services/carService";
 import { supabase } from "../services/supabase";
 import { uploadCarImage } from "../services/storage";
+import { decodeVin, getMakesForYear, getModelsForYearMake, isVinFormatValid, sanitizeVinInput } from "../services/vehicleData";
 import { useAppTheme, type AppColors } from "../theme";
-import type { PhotoView, RootStackParamList } from "../types";
+import type { IntakeMethod, MakeOption, ModelOption, PhotoView, RootStackParamList, VinDecodeResult } from "../types";
 import { logError, logInfo, logWarn } from "../utils/logger";
 import { calculateEstimatedValue, estimateBasePrice } from "../utils/valuation";
 
@@ -76,6 +78,7 @@ const REQUIRED_STEPS: CaptureStep[] = [
   }
 ];
 
+const MIN_YEAR = 1981;
 const MAX_MILEAGE_KM = 2_000_000;
 const MAX_USER_DETAILS_LENGTH = 220;
 
@@ -83,14 +86,57 @@ function pickFirstIncomplete(captured: Partial<Record<PhotoView, CapturedShot>>)
   return REQUIRED_STEPS.find((step) => !captured[step.id])?.id ?? REQUIRED_STEPS[REQUIRED_STEPS.length - 1].id;
 }
 
+function normalizeOptionLookup(value: string) {
+  return value
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function findMatchingOptionValue<T extends { value: string; label: string }>(options: T[], candidate?: string | null) {
+  const target = normalizeOptionLookup(String(candidate ?? ""));
+  if (!target) return null;
+  const matched = options.find((option) => {
+    const byValue = normalizeOptionLookup(option.value);
+    const byLabel = normalizeOptionLookup(option.label);
+    return byValue === target || byLabel === target;
+  });
+  return matched?.value ?? null;
+}
+
+function buildVinDecodeSummary(decoded: VinDecodeResult) {
+  const primary = [decoded.year ? String(decoded.year) : "", decoded.make ?? "", decoded.model ?? ""]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" ");
+  const secondary = [decoded.trim ?? "", decoded.bodyStyle ?? ""]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" | ");
+  if (!primary && !secondary) return "No vehicle details found from VIN.";
+  if (!secondary) return primary;
+  return `${primary} | ${secondary}`;
+}
+
 export function CameraScreen({ navigation }: CameraScreenProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [intakeMethod, setIntakeMethod] = useState<IntakeMethod>("vin_lookup");
+  const [vinInput, setVinInput] = useState("");
+  const [vinDecodedResult, setVinDecodedResult] = useState<VinDecodeResult | null>(null);
+  const [vinLookupError, setVinLookupError] = useState<string | null>(null);
+  const [isVinLookupLoading, setIsVinLookupLoading] = useState(false);
   const [vehicleYear, setVehicleYear] = useState("");
   const [vehicleMake, setVehicleMake] = useState("");
   const [vehicleModel, setVehicleModel] = useState("");
   const [vehicleMileageKm, setVehicleMileageKm] = useState("");
   const [userProvidedDetails, setUserProvidedDetails] = useState("");
+  const [makeOptions, setMakeOptions] = useState<MakeOption[]>([]);
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [isMakeOptionsLoading, setIsMakeOptionsLoading] = useState(false);
+  const [isModelOptionsLoading, setIsModelOptionsLoading] = useState(false);
+  const [makeOptionsError, setMakeOptionsError] = useState<string | null>(null);
+  const [modelOptionsError, setModelOptionsError] = useState<string | null>(null);
   const [capturedShots, setCapturedShots] = useState<Partial<Record<PhotoView, CapturedShot>>>({});
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<PhotoView | null>(null);
@@ -98,7 +144,19 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
   const isCancelledRef = useRef(false);
   const draftResolved = useRef(false);
   const scrollViewRef = useRef<ScrollView | null>(null);
+  const makeRequestIdRef = useRef(0);
+  const modelRequestIdRef = useRef(0);
   const { draftLoaded, draft, saveDraft, clearDraft } = useDraftScan();
+
+  const currentYear = new Date().getFullYear();
+  const yearOptions = useMemo(() => {
+    const options: { value: string; label: string }[] = [];
+    for (let year = currentYear + 1; year >= MIN_YEAR; year -= 1) {
+      const text = String(year);
+      options.push({ value: text, label: text });
+    }
+    return options;
+  }, [currentYear]);
 
   function handleInputFocus(event: any) {
     const target = event.nativeEvent.target;
@@ -109,22 +167,179 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
     }, 80);
   }
 
+  async function loadMakeOptionsForYear(yearValue: string) {
+    const year = Number(yearValue);
+    if (!Number.isInteger(year)) {
+      setMakeOptions([]);
+      setMakeOptionsError(null);
+      setIsMakeOptionsLoading(false);
+      return [];
+    }
+
+    const requestId = ++makeRequestIdRef.current;
+    setMakeOptionsError(null);
+    setIsMakeOptionsLoading(true);
+    try {
+      const options = await getMakesForYear(year);
+      if (requestId !== makeRequestIdRef.current) return [];
+      setMakeOptions(options);
+      return options;
+    } catch (error: any) {
+      if (requestId !== makeRequestIdRef.current) return [];
+      setMakeOptions([]);
+      setMakeOptionsError(error?.message ?? "Could not load makes.");
+      return [];
+    } finally {
+      if (requestId === makeRequestIdRef.current) {
+        setIsMakeOptionsLoading(false);
+      }
+    }
+  }
+
+  async function loadModelOptions(yearValue: string, makeValue: string) {
+    const year = Number(yearValue);
+    const normalizedMake = makeValue.trim();
+    if (!Number.isInteger(year) || !normalizedMake) {
+      setModelOptions([]);
+      setModelOptionsError(null);
+      setIsModelOptionsLoading(false);
+      return [];
+    }
+
+    const requestId = ++modelRequestIdRef.current;
+    setModelOptionsError(null);
+    setIsModelOptionsLoading(true);
+    try {
+      const options = await getModelsForYearMake(year, normalizedMake);
+      if (requestId !== modelRequestIdRef.current) return [];
+      setModelOptions(options);
+      return options;
+    } catch (error: any) {
+      if (requestId !== modelRequestIdRef.current) return [];
+      setModelOptions([]);
+      setModelOptionsError(error?.message ?? "Could not load models.");
+      return [];
+    } finally {
+      if (requestId === modelRequestIdRef.current) {
+        setIsModelOptionsLoading(false);
+      }
+    }
+  }
+
+  async function handleYearChange(
+    nextYear: string,
+    prefill?: {
+      make?: string | null;
+      model?: string | null;
+    }
+  ) {
+    makeRequestIdRef.current += 1;
+    setIsMakeOptionsLoading(false);
+    modelRequestIdRef.current += 1;
+    setIsModelOptionsLoading(false);
+    setVehicleYear(nextYear);
+    setVehicleMake("");
+    setVehicleModel("");
+    setModelOptions([]);
+    setModelOptionsError(null);
+
+    if (!nextYear) {
+      setMakeOptions([]);
+      setMakeOptionsError(null);
+      return;
+    }
+
+    const loadedMakes = await loadMakeOptionsForYear(nextYear);
+    const prefillMake = prefill?.make ?? null;
+    if (!prefillMake) return;
+
+    const matchedMake = findMatchingOptionValue(loadedMakes, prefillMake);
+    if (!matchedMake) return;
+
+    setVehicleMake(matchedMake);
+    const loadedModels = await loadModelOptions(nextYear, matchedMake);
+    const matchedModel = findMatchingOptionValue(loadedModels, prefill?.model ?? null);
+    if (matchedModel) {
+      setVehicleModel(matchedModel);
+    }
+  }
+
+  async function handleMakeChange(nextMake: string, prefillModel?: string | null) {
+    modelRequestIdRef.current += 1;
+    setIsModelOptionsLoading(false);
+    setVehicleMake(nextMake);
+    setVehicleModel("");
+    setModelOptions([]);
+    setModelOptionsError(null);
+
+    if (!vehicleYear.trim() || !nextMake.trim()) {
+      return;
+    }
+
+    const loadedModels = await loadModelOptions(vehicleYear, nextMake);
+    if (!prefillModel) return;
+    const matchedModel = findMatchingOptionValue(loadedModels, prefillModel);
+    if (matchedModel) {
+      setVehicleModel(matchedModel);
+    }
+  }
+
+  async function handleVinLookup() {
+    const normalizedVin = sanitizeVinInput(vinInput);
+    setVinInput(normalizedVin);
+    setVinLookupError(null);
+    setIntakeMethod("vin_lookup");
+
+    if (!isVinFormatValid(normalizedVin)) {
+      const message = "VIN must be 17 characters and cannot include I, O, or Q.";
+      setVinLookupError(message);
+      Alert.alert("Invalid VIN", message);
+      return;
+    }
+
+    setIsVinLookupLoading(true);
+    try {
+      const decoded = await decodeVin(normalizedVin);
+      setVinDecodedResult(decoded);
+      if (decoded.year) {
+        await handleYearChange(String(decoded.year), {
+          make: decoded.make,
+          model: decoded.model
+        });
+      }
+
+      const hasCoreFields = Boolean(decoded.year && decoded.make && decoded.model);
+      if (!hasCoreFields || decoded.isPartial) {
+        Alert.alert(
+          "VIN decoded with partial data",
+          "Some details are missing or uncertain. Please finish with manual Year/Make/Model selection."
+        );
+      }
+    } catch (error: any) {
+      const message = error?.message ?? "Could not decode VIN right now.";
+      setVinLookupError(message);
+      Alert.alert("VIN lookup failed", `${message} You can continue with manual selection.`);
+    } finally {
+      setIsVinLookupLoading(false);
+    }
+  }
+
   const parsedYear = Number(vehicleYear.trim());
   const parsedMileage = Number(vehicleMileageKm.replace(/[^\d]/g, ""));
+  const isYearValid =
+    /^\d{4}$/.test(vehicleYear.trim()) && parsedYear >= MIN_YEAR && parsedYear <= currentYear + 1;
+  const isMileageValid = Number.isFinite(parsedMileage) && parsedMileage >= 0 && parsedMileage <= MAX_MILEAGE_KM;
   const isVehicleInfoValid = useMemo(() => {
-    const currentYear = new Date().getFullYear();
-    const isYearValid =
-      /^\d{4}$/.test(vehicleYear.trim()) && parsedYear >= 1886 && parsedYear <= currentYear + 1;
-    const isMileageValid = Number.isFinite(parsedMileage) && parsedMileage >= 0 && parsedMileage <= MAX_MILEAGE_KM;
-
     return Boolean(vehicleMake.trim() && vehicleModel.trim() && isYearValid && isMileageValid);
-  }, [vehicleYear, vehicleMake, vehicleModel, parsedYear, parsedMileage]);
+  }, [vehicleMake, vehicleModel, isYearValid, isMileageValid]);
 
   const completedCount = REQUIRED_STEPS.reduce((count, step) => count + (capturedShots[step.id] ? 1 : 0), 0);
   const canAnalyze = completedCount === REQUIRED_STEPS.length && isVehicleInfoValid;
   const activeStepId = selectedStepId ?? pickFirstIncomplete(capturedShots);
   const activeStep = REQUIRED_STEPS.find((step) => step.id === activeStepId) ?? REQUIRED_STEPS[0];
   const activeShot = capturedShots[activeStep.id];
+  const vinPreviewText = vinDecodedResult ? buildVinDecodeSummary(vinDecodedResult) : "";
+  const vinLengthMessage = vinInput.length > 0 ? `${vinInput.length}/17` : "";
 
   // Offer to resume a saved draft once AsyncStorage has been read.
   useEffect(() => {
@@ -133,7 +348,8 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
     const photoCount = Object.keys(draft?.capturedShots ?? {}).length;
     const hasContent =
       draft !== null &&
-      (draft.vehicleYear.trim() ||
+      (draft.vinInput.trim() ||
+        draft.vehicleYear.trim() ||
         draft.vehicleMake.trim() ||
         draft.vehicleModel.trim() ||
         draft.vehicleMileageKm.trim() ||
@@ -149,7 +365,7 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
       .filter(Boolean)
       .join(" ");
     const body = vehicleLabel
-      ? `${vehicleLabel} — ${photoCount} of ${REQUIRED_STEPS.length} photos captured.`
+      ? `${vehicleLabel} - ${photoCount} of ${REQUIRED_STEPS.length} photos captured.`
       : `${photoCount} of ${REQUIRED_STEPS.length} photos captured.`;
 
     Alert.alert("Resume previous scan?", body, [
@@ -164,6 +380,9 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
       {
         text: "Resume",
         onPress: () => {
+          setIntakeMethod(draft!.intakeMethod);
+          setVinInput(draft!.vinInput);
+          setVinDecodedResult(draft!.vinDecodedResult);
           setVehicleYear(draft!.vehicleYear);
           setVehicleMake(draft!.vehicleMake);
           setVehicleModel(draft!.vehicleModel);
@@ -179,6 +398,14 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
             };
           }
           setCapturedShots(restoredShots);
+
+          if (draft!.vehicleYear) {
+            void handleYearChange(draft!.vehicleYear, {
+              make: draft!.vehicleMake,
+              model: draft!.vehicleModel
+            });
+          }
+
           draftResolved.current = true;
         }
       }
@@ -196,8 +423,29 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
         verificationConfidence: shot.verificationConfidence
       };
     }
-    saveDraft({ vehicleYear, vehicleMake, vehicleModel, vehicleMileageKm, userProvidedDetails, capturedShots: draftShots });
-  }, [vehicleYear, vehicleMake, vehicleModel, vehicleMileageKm, userProvidedDetails, capturedShots, saveDraft]);
+    saveDraft({
+      intakeMethod,
+      vinInput,
+      vinDecodedResult,
+      vehicleYear,
+      vehicleMake,
+      vehicleModel,
+      vehicleMileageKm,
+      userProvidedDetails,
+      capturedShots: draftShots
+    });
+  }, [
+    intakeMethod,
+    vinInput,
+    vinDecodedResult,
+    vehicleYear,
+    vehicleMake,
+    vehicleModel,
+    vehicleMileageKm,
+    userProvidedDetails,
+    capturedShots,
+    saveDraft
+  ]);
 
   function getKnownVehicle() {
     if (!isVehicleInfoValid) {
@@ -271,7 +519,7 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
 
   function enforceVehicleDetailsBeforePhotos() {
     if (isVehicleInfoValid) return true;
-    Alert.alert("Vehicle details required", "Enter make, model, year, and mileage (km) before photos.");
+    Alert.alert("Vehicle details required", "Select valid year, make, model, and mileage (km) before photos.");
     return false;
   }
 
@@ -419,6 +667,7 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
 
       const savedCar = await saveCarAnalysis({
         userId: user.id,
+        vin: isVinFormatValid(vinInput) ? sanitizeVinInput(vinInput) : null,
         mileageKm: knownVehicle.mileageKm,
         userNotes: trimmedUserDetails.length > 0 ? trimmedUserDetails : null,
         imageUrls: orderedShots.map(({ shot }) => shot.publicUrl),
@@ -461,36 +710,106 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
         >
           <Text style={styles.title}>Vehicle Intake</Text>
           <Text style={styles.subtitle}>
-            Enter vehicle details, then complete each required photo with automatic angle verification.
+            Identify the vehicle first, then complete each required photo with automatic angle verification.
           </Text>
+
+          <Text style={styles.sectionTitle}>Vehicle Identification</Text>
+          <View style={styles.methodToggleWrap}>
+            <Pressable
+              onPress={() => setIntakeMethod("vin_lookup")}
+              style={({ pressed }) => [
+                styles.methodChip,
+                intakeMethod === "vin_lookup" && styles.methodChipActive,
+                pressed && styles.methodChipPressed
+              ]}
+            >
+              <Text style={[styles.methodChipText, intakeMethod === "vin_lookup" && styles.methodChipTextActive]}>
+                VIN Lookup
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setIntakeMethod("manual_selection")}
+              style={({ pressed }) => [
+                styles.methodChip,
+                intakeMethod === "manual_selection" && styles.methodChipActive,
+                pressed && styles.methodChipPressed
+              ]}
+            >
+              <Text style={[styles.methodChipText, intakeMethod === "manual_selection" && styles.methodChipTextActive]}>
+                Manual Selection
+              </Text>
+            </Pressable>
+          </View>
+          <Text style={styles.fieldHint}>
+            VIN lookup is optional. If VIN decode is incomplete or fails, continue with manual Year/Make/Model.
+          </Text>
+
+          {intakeMethod === "vin_lookup" ? (
+            <View style={styles.formGroup}>
+              <TextField
+                label="VIN (optional)"
+                value={vinInput}
+                onChangeText={(value) => {
+                  setVinInput(sanitizeVinInput(value));
+                  setVinLookupError(null);
+                }}
+                autoCapitalize="characters"
+                placeholder="17-character VIN"
+                onFocus={handleInputFocus}
+              />
+              <Text style={styles.fieldHint}>VIN rules: 17 chars, letters and numbers, no I/O/Q. {vinLengthMessage}</Text>
+              {vinLookupError ? <Text style={styles.errorText}>{vinLookupError}</Text> : null}
+              <PrimaryButton
+                title="Lookup VIN"
+                onPress={handleVinLookup}
+                loading={isVinLookupLoading}
+                disabled={isVinLookupLoading || vinInput.trim().length === 0}
+              />
+              {vinDecodedResult ? (
+                <View style={styles.vinResultCard}>
+                  <Text style={styles.vinResultTitle}>Decoded VIN</Text>
+                  <Text style={styles.vinResultText}>{vinPreviewText}</Text>
+                  {vinDecodedResult.isPartial ? (
+                    <Text style={styles.fieldHint}>Some fields may need manual correction.</Text>
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
+          ) : null}
 
           <Text style={styles.sectionTitle}>Vehicle Details</Text>
           <View style={styles.formGroup}>
-            <TextField
+            <SelectField
               label="Year"
               value={vehicleYear}
-              onChangeText={setVehicleYear}
-              keyboardType="number-pad"
-              autoCapitalize="none"
-              placeholder="e.g. 2019"
-              onFocus={handleInputFocus}
+              options={yearOptions}
+              onChange={(value) => {
+                void handleYearChange(value);
+              }}
+              placeholder="Select year"
             />
-            <TextField
+            <SelectField
               label="Make"
               value={vehicleMake}
-              onChangeText={setVehicleMake}
-              autoCapitalize="words"
-              placeholder="e.g. Honda"
-              onFocus={handleInputFocus}
+              options={makeOptions}
+              onChange={(value) => {
+                void handleMakeChange(value);
+              }}
+              placeholder={vehicleYear ? "Select make" : "Select year first"}
+              disabled={!vehicleYear}
+              loading={isMakeOptionsLoading}
             />
-            <TextField
+            {makeOptionsError ? <Text style={styles.errorText}>{makeOptionsError}</Text> : null}
+            <SelectField
               label="Model"
               value={vehicleModel}
-              onChangeText={setVehicleModel}
-              autoCapitalize="words"
-              placeholder="e.g. Civic"
-              onFocus={handleInputFocus}
+              options={modelOptions}
+              onChange={(value) => setVehicleModel(value)}
+              placeholder={vehicleMake ? "Select model" : "Select year and make first"}
+              disabled={!vehicleYear || !vehicleMake}
+              loading={isModelOptionsLoading}
             />
+            {modelOptionsError ? <Text style={styles.errorText}>{modelOptionsError}</Text> : null}
             <TextField
               label="Mileage (km)"
               value={vehicleMileageKm}
@@ -606,10 +925,62 @@ function createStyles(colors: AppColors) {
     formGroup: {
       gap: 10
     },
+    methodToggleWrap: {
+      flexDirection: "row",
+      gap: 8
+    },
+    methodChip: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      borderRadius: 10,
+      minHeight: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 8
+    },
+    methodChipActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.secondarySurface
+    },
+    methodChipPressed: {
+      opacity: 0.82
+    },
+    methodChipText: {
+      fontSize: 14,
+      color: colors.textMuted,
+      fontWeight: "700"
+    },
+    methodChipTextActive: {
+      color: colors.onSecondarySurface
+    },
+    vinResultCard: {
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 10,
+      gap: 4
+    },
+    vinResultTitle: {
+      fontSize: 13,
+      color: colors.textMuted,
+      fontWeight: "700"
+    },
+    vinResultText: {
+      fontSize: 14,
+      color: colors.text
+    },
     fieldHint: {
       fontSize: 12,
       color: colors.textSubtle,
       lineHeight: 18
+    },
+    errorText: {
+      fontSize: 12,
+      lineHeight: 18,
+      color: colors.danger
     },
     stepsList: {
       gap: 8
@@ -689,3 +1060,4 @@ function createStyles(colors: AppColors) {
     }
   });
 }
+

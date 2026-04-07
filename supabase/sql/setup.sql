@@ -11,6 +11,7 @@ create table if not exists public.profiles (
 create table if not exists public.cars (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
+  vin text check (vin is null or vin ~ '^[A-HJ-NPR-Z0-9]{17}$'),
   make text not null,
   model text not null,
   year integer not null,
@@ -158,6 +159,9 @@ alter table public.cars
 
 alter table public.cars
   add column if not exists user_notes text;
+
+alter table public.cars
+  add column if not exists vin text check (vin is null or vin ~ '^[A-HJ-NPR-Z0-9]{17}$');
 
 alter table public.analysis
   add column if not exists detected_mods jsonb not null default '[]'::jsonb;

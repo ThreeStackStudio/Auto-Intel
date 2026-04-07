@@ -112,6 +112,33 @@ const ANALYSIS_SELECT_WITH_RANGE = `
   created_at
 `;
 
+const CAR_INSERT_SELECT_WITH_VIN = `
+  id,
+  user_id,
+  vin,
+  make,
+  model,
+  year,
+  mileage_km,
+  user_notes,
+  estimated_value,
+  confidence,
+  created_at
+`;
+
+const CAR_INSERT_SELECT_LEGACY = `
+  id,
+  user_id,
+  make,
+  model,
+  year,
+  mileage_km,
+  user_notes,
+  estimated_value,
+  confidence,
+  created_at
+`;
+
 const IMAGE_BUCKET = "car-images";
 
 function isMissingRangeColumnError(error: { code?: string; message?: string } | null): boolean {
@@ -124,6 +151,27 @@ function isMissingRangeColumnError(error: { code?: string; message?: string } | 
 
   const message = (error.message ?? "").toLowerCase();
   return message.includes("low_value") || message.includes("high_value");
+}
+
+function isMissingVinColumnError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) {
+    return false;
+  }
+  if (error.code === "42703") {
+    return true;
+  }
+
+  return (error.message ?? "").toLowerCase().includes("vin");
+}
+
+function normalizeVinForStorage(vin?: string | null) {
+  const normalized = String(vin ?? "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .trim();
+  if (normalized.length !== 17) return null;
+  if (/[IOQ]/.test(normalized)) return null;
+  return normalized;
 }
 
 function extractStoragePathFromImageUrl(imageUrl: string): string | null {
@@ -213,6 +261,7 @@ export async function fetchUserCars(): Promise<CarWithRelations[]> {
 
 type SaveCarAnalysisArgs = {
   userId: string;
+  vin?: string | null;
   mileageKm: number;
   userNotes?: string | null;
   imageUrls: string[];
@@ -222,37 +271,41 @@ type SaveCarAnalysisArgs = {
 };
 
 export async function saveCarAnalysis(args: SaveCarAnalysisArgs): Promise<CarWithRelations> {
-  const { userId, mileageKm, userNotes, imageUrls, photoAngles, analysisResult, estimatedValue } = args;
+  const { userId, vin, mileageKm, userNotes, imageUrls, photoAngles, analysisResult, estimatedValue } = args;
   let createdCarId: string | null = null;
 
   try {
-    const { data: car, error: carError } = await supabase
+    const baseCarInsert = {
+      user_id: userId,
+      make: analysisResult.make,
+      model: analysisResult.model,
+      year: Number.isFinite(analysisResult.year) ? analysisResult.year : new Date().getFullYear(),
+      mileage_km: Number.isFinite(mileageKm) ? Math.max(0, Math.round(mileageKm)) : null,
+      user_notes: userNotes?.trim() ? userNotes.trim() : null,
+      estimated_value: estimatedValue,
+      confidence: analysisResult.confidence
+    };
+
+    const normalizedVin = normalizeVinForStorage(vin);
+
+    const carInsertResult = await supabase
       .from("cars")
-      .insert({
-        user_id: userId,
-        make: analysisResult.make,
-        model: analysisResult.model,
-        year: Number.isFinite(analysisResult.year) ? analysisResult.year : new Date().getFullYear(),
-        mileage_km: Number.isFinite(mileageKm) ? Math.max(0, Math.round(mileageKm)) : null,
-        user_notes: userNotes?.trim() ? userNotes.trim() : null,
-        estimated_value: estimatedValue,
-        confidence: analysisResult.confidence
-      })
-      .select(
-        `
-        id,
-        user_id,
-        make,
-        model,
-        year,
-        mileage_km,
-        user_notes,
-        estimated_value,
-        confidence,
-        created_at
-        `
-      )
+      .insert(normalizedVin ? { ...baseCarInsert, vin: normalizedVin } : baseCarInsert)
+      .select(CAR_INSERT_SELECT_WITH_VIN)
       .single();
+
+    let car = carInsertResult.data as CarWithRelations | null;
+    let carError = carInsertResult.error;
+
+    if (carError && isMissingVinColumnError(carError)) {
+      const legacyInsertResult = await supabase
+        .from("cars")
+        .insert(baseCarInsert)
+        .select(CAR_INSERT_SELECT_LEGACY)
+        .single();
+      car = legacyInsertResult.data as CarWithRelations | null;
+      carError = legacyInsertResult.error;
+    }
 
     if (carError || !car) {
       throw new Error(carError?.message ?? "Could not save car record.");

@@ -25,6 +25,29 @@ export type PhotoView =
   | "interior"
   | "tire_tread";
 
+export type IntakeMethod = "vin_lookup" | "manual_selection";
+
+export type VinDecodeResult = {
+  vin: string;
+  year: number | null;
+  make: string | null;
+  model: string | null;
+  trim: string | null;
+  bodyStyle: string | null;
+  isPartial: boolean;
+  source: string;
+};
+
+export type MakeOption = {
+  value: string;
+  label: string;
+};
+
+export type ModelOption = {
+  value: string;
+  label: string;
+};
+
 export type DetectedModification = {
   name: string;
   impactPercent: number;
@@ -76,6 +99,7 @@ export type ProfileRow = {
 export type CarRow = {
   id: string;
   user_id: string;
+  vin?: string | null;
   make: string;
   model: string;
   year: number;
