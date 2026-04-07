@@ -479,6 +479,13 @@ export function CameraScreen({ navigation }: CameraScreenProps) {
       const uploaded = await uploadCarImage(localUri, user.id, `${activeStep.id}-${Date.now()}`);
 
       stage = "verify_photo";
+      if (activeStep.id === "passenger_side" && !capturedShots.driver_side) {
+        Alert.alert(
+          "Driver side required first",
+          "Capture and verify the driver side photo before the passenger side so both can be compared."
+        );
+        return;
+      }
       const referenceSideUrl =
         activeStep.id === "passenger_side" ? capturedShots.driver_side?.analysisUrl : undefined;
       const verification = await verifyCarPhoto(

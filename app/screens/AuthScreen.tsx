@@ -94,6 +94,11 @@ export function AuthScreen(_props: AuthScreenProps) {
       return;
     }
 
+    if (password.length < 6) {
+      Alert.alert("Weak password", "Password must be at least 6 characters.");
+      return;
+    }
+
     setLoading(true);
     try {
       const { data, error } = await supabase.auth.signUp({
@@ -115,6 +120,12 @@ export function AuthScreen(_props: AuthScreenProps) {
       const userId = data.user?.id;
       if (!userId) {
         throw new Error("Could not create user profile.");
+      }
+
+      // Supabase returns a user with an empty identities array when the email
+      // is already registered (regardless of whether email confirmation is on).
+      if (Array.isArray(data.user?.identities) && data.user.identities.length === 0) {
+        throw new Error("An account with this email already exists. Please sign in instead.");
       }
 
       if (data.session) {
