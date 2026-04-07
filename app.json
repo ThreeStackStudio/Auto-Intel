@@ -9,7 +9,9 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.autointel.app",
+      "buildNumber": "1"
     },
     "android": {},
     "web": {

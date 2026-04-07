@@ -8,7 +8,12 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "version:verify": "node scripts/versioning/verify-versioning.cjs",
+    "release:prod:patch": "node scripts/versioning/release-version.cjs patch",
+    "release:prod:minor": "node scripts/versioning/release-version.cjs minor",
+    "release:prod:major": "node scripts/versioning/release-version.cjs major",
+    "release:prod:build": "node scripts/versioning/release-version.cjs build"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
